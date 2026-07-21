@@ -11,7 +11,7 @@ func TestBookSide_BidsBestIsHighestPrice(t *testing.T) {
 	for _, p := range []int64{100, 105, 95, 110} {
 		bs.GetOrCreateLevel(p)
 	}
-	if got := bs.Best(); got == nil || got.Price != 110 {
+	if got := bs.Best(); got == nil || got.Price() != 110 {
 		t.Fatalf("Best() = %v, want price 110", got)
 	}
 }
@@ -21,7 +21,7 @@ func TestBookSide_AsksBestIsLowestPrice(t *testing.T) {
 	for _, p := range []int64{100, 105, 95, 110} {
 		bs.GetOrCreateLevel(p)
 	}
-	if got := bs.Best(); got == nil || got.Price != 95 {
+	if got := bs.Best(); got == nil || got.Price() != 95 {
 		t.Fatalf("Best() = %v, want price 95", got)
 	}
 }
@@ -42,7 +42,7 @@ func TestBookSide_RemoveLevelUpdatesBest(t *testing.T) {
 
 	bs.RemoveLevel(110)
 
-	if got := bs.Best(); got == nil || got.Price != 100 {
+	if got := bs.Best(); got == nil || got.Price() != 100 {
 		t.Fatalf("Best() after removing top level = %v, want price 100", got)
 	}
 }

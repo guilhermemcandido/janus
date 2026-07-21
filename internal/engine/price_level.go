@@ -8,17 +8,21 @@ import (
 
 // PriceLevel holds all resting orders at a single price, FIFO by arrival.
 type PriceLevel struct {
-	Price  int64
+	price  int64
 	orders *list.List
 	index  map[uint64]*list.Element // orderID -> element, for O(1) cancel
 }
 
 func NewPriceLevel(price int64) *PriceLevel {
 	return &PriceLevel{
-		Price:  price,
+		price:  price,
 		orders: list.New(),
 		index:  make(map[uint64]*list.Element),
 	}
+}
+
+func (pl *PriceLevel) Price() int64 {
+	return pl.price
 }
 
 // Add appends an order to the back of the queue.

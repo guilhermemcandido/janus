@@ -3,7 +3,18 @@ package engine
 import "github.com/guilhermemcandido/janus/internal/types"
 
 // Submit matches order by price-time priority; unfilled limit quantity rests, market orders never do.
-func (ob *OrderBook) Submit(order *types.Order) []types.Trade {
+func (ob *OrderBook) Submit(order *types.Order) ([]types.Trade, error) {
+	if order.Symbol != ob.Symbol {
+		return nil, ErrSymbolMismatch
+	}
+	if order.Quantity == 0 {
+		return nil, ErrInvalidQuantity
+	}
+	if _, dup := ob.seen[order.ID]; dup {
+		return nil, ErrDuplicateOrderID
+	}
+	ob.seen[order.ID] = struct{}{}
+
 	order.Timestamp = int64(ob.nextSeq())
 
 	opposite := ob.opposite(order.Side)
@@ -14,12 +25,12 @@ func (ob *OrderBook) Submit(order *types.Order) []types.Trade {
 		if level == nil {
 			break
 		}
-		if order.Type == types.Limit && !crosses(order, level.Price) {
+		if order.Type == types.Limit && !crosses(order, level.Price()) {
 			break
 		}
 		trades = append(trades, ob.matchLevel(order, level)...)
 		if level.IsEmpty() {
-			opposite.RemoveLevel(level.Price)
+			opposite.RemoveLevel(level.Price())
 		}
 	}
 
@@ -27,7 +38,7 @@ func (ob *OrderBook) Submit(order *types.Order) []types.Trade {
 		ob.rest(order)
 	}
 
-	return trades
+	return trades, nil
 }
 
 // matchLevel fills taker against level's FIFO queue until either is exhausted.
@@ -44,7 +55,7 @@ func (ob *OrderBook) matchLevel(taker *types.Order, level *PriceLevel) []types.T
 		trades = append(trades, types.Trade{
 			ID:           seq,
 			Timestamp:    int64(seq),
-			Price:        level.Price,
+			Price:        level.Price(),
 			Quantity:     qty,
 			MakerOrderID: maker.ID,
 			TakerOrderID: taker.ID,
@@ -55,7 +66,7 @@ func (ob *OrderBook) matchLevel(taker *types.Order, level *PriceLevel) []types.T
 
 		if maker.Remaining == 0 {
 			level.PopFront()
-			delete(ob.Orders, maker.ID)
+			delete(ob.orders, maker.ID)
 		}
 	}
 	return trades
@@ -64,23 +75,23 @@ func (ob *OrderBook) matchLevel(taker *types.Order, level *PriceLevel) []types.T
 // rest adds order to its own side of the book, tracked by both the price level and the order index.
 func (ob *OrderBook) rest(order *types.Order) {
 	ob.sideFor(order.Side).GetOrCreateLevel(order.Price).Add(order)
-	ob.Orders[order.ID] = order
+	ob.orders[order.ID] = order
 }
 
 // sideFor returns the side an order rests on.
 func (ob *OrderBook) sideFor(side types.Side) *BookSide {
 	if side == types.Buy {
-		return ob.Bids
+		return ob.bids
 	}
-	return ob.Asks
+	return ob.asks
 }
 
 // opposite returns the side an order matches against.
 func (ob *OrderBook) opposite(side types.Side) *BookSide {
 	if side == types.Buy {
-		return ob.Asks
+		return ob.asks
 	}
-	return ob.Bids
+	return ob.bids
 }
 
 func (ob *OrderBook) nextSeq() uint64 {
