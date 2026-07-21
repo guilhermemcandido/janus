@@ -9,8 +9,8 @@ func NewExchange() *Exchange {
 	return &Exchange{books: make(map[string]*OrderBook)}
 }
 
-// Book returns the OrderBook for symbol, creating it the first time it's requested.
-func (e *Exchange) Book(symbol string) *OrderBook {
+// GetOrCreateBook returns the OrderBook for symbol, creating it the first time it's requested.
+func (e *Exchange) GetOrCreateBook(symbol string) *OrderBook {
 	if b, ok := e.books[symbol]; ok {
 		return b
 	}

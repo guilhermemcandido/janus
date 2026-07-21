@@ -4,17 +4,17 @@ import "testing"
 
 func TestExchange_BookIsStablePerSymbol(t *testing.T) {
 	ex := NewExchange()
-	a := ex.Book("AAPL")
-	b := ex.Book("AAPL")
+	a := ex.GetOrCreateBook("AAPL")
+	b := ex.GetOrCreateBook("AAPL")
 	if a != b {
-		t.Fatalf("Book(\"AAPL\") returned different instances on second call")
+		t.Fatalf("GetOrCreateBook(\"AAPL\") returned different instances on second call")
 	}
 }
 
 func TestExchange_DifferentSymbolsGetDifferentBooks(t *testing.T) {
 	ex := NewExchange()
-	aapl := ex.Book("AAPL")
-	tsla := ex.Book("TSLA")
+	aapl := ex.GetOrCreateBook("AAPL")
+	tsla := ex.GetOrCreateBook("TSLA")
 	if aapl == tsla {
 		t.Fatalf("expected distinct books for distinct symbols")
 	}
