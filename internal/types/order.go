@@ -19,6 +19,7 @@ const (
 // Order is a single client order tracked by the engine.
 type Order struct {
 	ID        uint64
+	Symbol    string
 	Side      Side
 	Type      OrderType
 	Price     int64
