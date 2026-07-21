@@ -8,6 +8,7 @@ type OrderBook struct {
 	Bids   *BookSide
 	Asks   *BookSide
 	Orders map[uint64]*types.Order
+	seq    uint64
 }
 
 func NewOrderBook(symbol string) *OrderBook {
