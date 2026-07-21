@@ -2,25 +2,29 @@
 
 A high-performance order matching engine simulating a financial exchange, written in Go.
 
-Implements an in-memory order book with price-time priority matching, limit and market orders, and a channel-based concurrency model. Built to explore matching engine design and market microstructure.
+Implements an in-memory order book with price-time priority matching for limit and market orders. Concurrency (a channel-based model) and an API/CLI surface are planned but not built yet — see Status below.
 
 ## Architecture
 
-Updated as implementation progresses — currently reflects everything built so far, with no matching logic yet.
+Updated as implementation progresses — currently reflects everything built so far: price-time priority matching exists; concurrency, CLI, and REST API do not yet.
 
 ```mermaid
 classDiagram
     class Exchange {
         -books map~string,OrderBook~
-        +Book(symbol) OrderBook
+        +GetOrCreateBook(symbol) OrderBook
     }
     class OrderBook {
         +Symbol string
-        +Bids BookSide
-        +Asks BookSide
-        +Orders map~uint64,Order~
+        -bids BookSide
+        -asks BookSide
+        -orders map~uint64,Order~
+        -seen map~uint64,struct~
         -seq uint64
-        +Submit(order) Trade[]
+        +BestBid() PriceLevel
+        +BestAsk() PriceLevel
+        +Order(id) Order
+        +Submit(order) Trade[]~error~
     }
     class BookSide {
         -side Side
@@ -32,9 +36,10 @@ classDiagram
         +IsEmpty() bool
     }
     class PriceLevel {
-        +Price int64
+        -price int64
         -orders list.List
         -index map~uint64,Element~
+        +Price() int64
         +Add(order)
         +Remove(orderID) bool
         +Front() Order
@@ -62,10 +67,10 @@ classDiagram
     }
 
     Exchange "1" o-- "*" OrderBook : keyed by symbol
-    OrderBook "1" o-- "2" BookSide : Bids / Asks
+    OrderBook "1" o-- "2" BookSide : bids / asks
     BookSide "1" o-- "*" PriceLevel
     PriceLevel "1" o-- "*" Order : FIFO queue
-    OrderBook "1" o-- "*" Order : Orders map, by ID
+    OrderBook "1" o-- "*" Order : orders map, by ID
     Trade ..> Order : references MakerOrderID / TakerOrderID
 ```
 
@@ -79,4 +84,4 @@ classDiagram
 
 ## Status
 
-Early development.
+Core matching is implemented and tested: `OrderBook.Submit` matches limit and market orders by price-time priority, validates input (rejects zero quantity, mismatched symbols, and reused order IDs), and returns an error rather than failing silently. Not yet built: order cancellation, concurrency, CLI, REST API.
