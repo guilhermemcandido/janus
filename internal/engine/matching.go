@@ -2,8 +2,7 @@ package engine
 
 import "github.com/guilhermemcandido/janus/internal/types"
 
-// Submit matches order against the book using price-time priority, then rests
-// any unfilled limit quantity. Market orders never rest.
+// Submit matches order by price-time priority; unfilled limit quantity rests, market orders never do.
 func (ob *OrderBook) Submit(order *types.Order) []types.Trade {
 	order.Remaining = order.Quantity
 	order.Timestamp = int64(ob.nextSeq())
