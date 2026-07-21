@@ -7,7 +7,18 @@ import (
 )
 
 func newOrder(id uint64, side types.Side, typ types.OrderType, price int64, qty uint64) *types.Order {
-	return &types.Order{ID: id, Symbol: "TEST", Side: side, Type: typ, Price: price, Quantity: qty}
+	return types.NewOrder(id, "TEST", side, typ, price, qty)
+}
+
+func TestSubmit_DoesNotOverwriteCallerSetRemaining(t *testing.T) {
+	ob := NewOrderBook("TEST")
+	order := &types.Order{ID: 1, Symbol: "TEST", Side: types.Sell, Type: types.Limit, Price: 100, Quantity: 100, Remaining: 30}
+
+	ob.Submit(order)
+
+	if order.Remaining != 30 {
+		t.Fatalf("Remaining = %d, want untouched at 30 (Submit must not reset it from Quantity)", order.Remaining)
+	}
 }
 
 func TestSubmit_ExactMatchFillsBothOrders(t *testing.T) {
