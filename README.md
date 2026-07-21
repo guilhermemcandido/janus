@@ -19,6 +19,8 @@ classDiagram
         +Bids BookSide
         +Asks BookSide
         +Orders map~uint64,Order~
+        -seq uint64
+        +Submit(order) Trade[]
     }
     class BookSide {
         -side Side
