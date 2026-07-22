@@ -58,6 +58,12 @@ func (bs *BookSide) RemoveLevel(price int64) {
 	bs.prices = append(bs.prices[:i], bs.prices[i+1:]...)
 }
 
+// Level returns the PriceLevel at price without creating one, and whether it exists.
+func (bs *BookSide) Level(price int64) (*PriceLevel, bool) {
+	pl, ok := bs.levels[price]
+	return pl, ok
+}
+
 // Best returns the PriceLevel at the best price for this side, or nil if the side is empty.
 func (bs *BookSide) Best() *PriceLevel {
 	if len(bs.prices) == 0 {

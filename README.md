@@ -24,12 +24,14 @@ classDiagram
         +BestAsk() PriceLevel
         +Order(id) Order
         +Submit(order) Trade[]~error~
+        +Cancel(id) Order~error~
     }
     class BookSide {
         -side Side
         -levels map~int64,PriceLevel~
         -prices int64[]
         +GetOrCreateLevel(price) PriceLevel
+        +Level(price) PriceLevel
         +RemoveLevel(price)
         +Best() PriceLevel
         +IsEmpty() bool
@@ -83,4 +85,4 @@ classDiagram
 
 ## Status
 
-Core matching is implemented and tested: `OrderBook.Submit` matches limit and market orders by price-time priority, assigns each order's `ID` itself (so IDs can't collide or be spoofed by a caller), validates input (rejects zero quantity and mismatched symbols), and returns an error rather than failing silently. Not yet built: order cancellation, concurrency, CLI, REST API.
+Core matching is implemented and tested: `OrderBook.Submit` matches limit and market orders by price-time priority, assigns each order's `ID` itself (so IDs can't collide or be spoofed by a caller), validates input (rejects zero quantity and mismatched symbols), and returns an error rather than failing silently. `OrderBook.Cancel` removes a resting order by ID, cleaning up its price level if that was the last order there. Not yet built: concurrency, CLI, REST API.
