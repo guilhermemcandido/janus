@@ -8,7 +8,6 @@ type OrderBook struct {
 	bids   *BookSide
 	asks   *BookSide
 	orders map[uint64]*types.Order // currently resting orders, by ID
-	seen   map[uint64]struct{}     // every order ID ever accepted, so IDs can't be reused
 	seq    uint64
 }
 
@@ -18,7 +17,6 @@ func NewOrderBook(symbol string) *OrderBook {
 		bids:   NewBookSide(types.Buy),
 		asks:   NewBookSide(types.Sell),
 		orders: make(map[uint64]*types.Order),
-		seen:   make(map[uint64]struct{}),
 	}
 }
 

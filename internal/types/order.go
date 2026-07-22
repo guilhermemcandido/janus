@@ -25,13 +25,11 @@ type Order struct {
 	Price     int64
 	Quantity  uint64
 	Remaining uint64
-	Timestamp int64
 }
 
-// NewOrder builds an order ready to submit, with Remaining seeded from Quantity.
-func NewOrder(id uint64, symbol string, side Side, typ OrderType, price int64, quantity uint64) *Order {
+// NewOrder builds an order ready to submit, with Remaining seeded from Quantity. ID is assigned by the engine on Submit, not here.
+func NewOrder(symbol string, side Side, typ OrderType, price int64, quantity uint64) *Order {
 	return &Order{
-		ID:        id,
 		Symbol:    symbol,
 		Side:      side,
 		Type:      typ,

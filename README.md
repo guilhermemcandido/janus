@@ -19,7 +19,6 @@ classDiagram
         -bids BookSide
         -asks BookSide
         -orders map~uint64,Order~
-        -seen map~uint64,struct~
         -seq uint64
         +BestBid() PriceLevel
         +BestAsk() PriceLevel
@@ -55,11 +54,9 @@ classDiagram
         +Price int64
         +Quantity uint64
         +Remaining uint64
-        +Timestamp int64
     }
     class Trade {
         +ID uint64
-        +Timestamp int64
         +Price int64
         +Quantity uint64
         +MakerOrderID uint64
@@ -82,6 +79,8 @@ classDiagram
 
 **Maker vs. Taker.** When two orders match, the **maker** is the order that was already resting on the book (it provided liquidity); the **taker** is the incoming order that crossed the spread and caused the match (it consumed liquidity). A trade always executes at the maker's price. This distinction is the basis for maker/taker fee schedules on real exchanges, and for a market-making strategy specifically, tracking your own maker-fill ratio is how you'd measure whether you're actually providing liquidity.
 
+**`ID` is engine-assigned and doubles as the ordering key.** `Order.ID` and `Trade.ID` are assigned by the engine from an internal monotonic counter, not supplied by the caller — this makes collisions structurally impossible rather than something to detect and reject. There's no separate timestamp field: since the counter is strictly increasing, `ID` alone already answers "did this happen before that?" (`a.ID < b.ID`), the same way a Kafka offset or a database log sequence number serves as both a unique identifier and an ordering key at once.
+
 ## Status
 
-Core matching is implemented and tested: `OrderBook.Submit` matches limit and market orders by price-time priority, validates input (rejects zero quantity, mismatched symbols, and reused order IDs), and returns an error rather than failing silently. Not yet built: order cancellation, concurrency, CLI, REST API.
+Core matching is implemented and tested: `OrderBook.Submit` matches limit and market orders by price-time priority, assigns each order's `ID` itself (so IDs can't collide or be spoofed by a caller), validates input (rejects zero quantity and mismatched symbols), and returns an error rather than failing silently. Not yet built: order cancellation, concurrency, CLI, REST API.

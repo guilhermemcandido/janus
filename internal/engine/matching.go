@@ -10,12 +10,8 @@ func (ob *OrderBook) Submit(order *types.Order) ([]types.Trade, error) {
 	if order.Quantity == 0 {
 		return nil, ErrInvalidQuantity
 	}
-	if _, dup := ob.seen[order.ID]; dup {
-		return nil, ErrDuplicateOrderID
-	}
-	ob.seen[order.ID] = struct{}{}
 
-	order.Timestamp = int64(ob.nextSeq())
+	order.ID = ob.nextSeq()
 
 	opposite := ob.opposite(order.Side)
 	var trades []types.Trade
@@ -51,10 +47,8 @@ func (ob *OrderBook) matchLevel(taker *types.Order, level *PriceLevel) []types.T
 			qty = maker.Remaining
 		}
 
-		seq := ob.nextSeq()
 		trades = append(trades, types.Trade{
-			ID:           seq,
-			Timestamp:    int64(seq),
+			ID:           ob.nextSeq(),
 			Price:        level.Price(),
 			Quantity:     qty,
 			MakerOrderID: maker.ID,
