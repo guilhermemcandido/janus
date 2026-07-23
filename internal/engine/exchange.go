@@ -1,20 +1,37 @@
 package engine
 
-// Exchange holds one OrderBook per traded symbol, creating each on first use.
+import "sync"
+
+// Exchange holds one Engine per traded symbol, creating each (and its OrderBook and goroutine) on first use.
 type Exchange struct {
-	books map[string]*OrderBook
+	mu      sync.Mutex
+	engines map[string]*Engine
 }
 
 func NewExchange() *Exchange {
-	return &Exchange{books: make(map[string]*OrderBook)}
+	return &Exchange{engines: make(map[string]*Engine)}
 }
 
-// GetOrCreateBook returns the OrderBook for symbol, creating it the first time it's requested.
-func (e *Exchange) GetOrCreateBook(symbol string) *OrderBook {
-	if b, ok := e.books[symbol]; ok {
-		return b
+// GetOrCreateEngine returns the Engine for symbol, starting its goroutine the first time it's requested.
+func (e *Exchange) GetOrCreateEngine(symbol string) *Engine {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if eng, ok := e.engines[symbol]; ok {
+		return eng
 	}
-	b := NewOrderBook(symbol)
-	e.books[symbol] = b
-	return b
+	eng := NewEngine(NewOrderBook(symbol))
+	go eng.Run()
+	e.engines[symbol] = eng
+	return eng
+}
+
+// Close stops every managed Engine's goroutine.
+func (e *Exchange) Close() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for _, eng := range e.engines {
+		eng.Stop()
+	}
 }
