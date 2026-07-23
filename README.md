@@ -25,6 +25,7 @@ classDiagram
         +BestBid() PriceLevel
         +BestAsk() PriceLevel
         +Order(id) Order
+        +Depth(n) BookSnapshot
         +Submit(order) Trade[]~error~
         +Cancel(id) Order~error~
     }
@@ -36,6 +37,7 @@ classDiagram
         +Level(price) PriceLevel
         +RemoveLevel(price)
         +Best() PriceLevel
+        +Depth(n) PriceLevelSnapshot[]
         +IsEmpty() bool
     }
     class PriceLevel {
@@ -48,6 +50,7 @@ classDiagram
         +Front() Order
         +PopFront() Order
         +Len() int
+        +TotalQuantity() uint64
         +IsEmpty() bool
     }
     class Order {
@@ -66,10 +69,21 @@ classDiagram
         +MakerOrderID uint64
         +TakerOrderID uint64
     }
+    class PriceLevelSnapshot {
+        +Price int64
+        +Quantity uint64
+    }
+    class BookSnapshot {
+        +Symbol string
+        +Bids PriceLevelSnapshot[]
+        +Asks PriceLevelSnapshot[]
+    }
 
     class Engine {
         -book OrderBook
         -inbox chan~command~
+        -done chan~struct~
+        -subscribers map~uint64,chan_Trade~
         +Run()
         +Stop()
         +Submit(order) Trade[]~error~
@@ -77,6 +91,8 @@ classDiagram
         +BestBid() PriceLevel
         +BestAsk() PriceLevel
         +Order(id) Order
+        +Depth(n) BookSnapshot
+        +Subscribe() chan_Trade,func
         +Symbol() string
     }
 
@@ -87,6 +103,9 @@ classDiagram
     PriceLevel "1" o-- "*" Order : FIFO queue
     OrderBook "1" o-- "*" Order : orders map, by ID
     Trade ..> Order : references MakerOrderID / TakerOrderID
+    OrderBook ..> BookSnapshot : Depth() returns
+    BookSnapshot "1" o-- "*" PriceLevelSnapshot
+    Engine ..> Trade : broadcasts to subscribers
 ```
 
 ## Concurrency model
@@ -94,6 +113,10 @@ classDiagram
 **`OrderBook` is protected by single-goroutine ownership, not a lock.** Once wrapped in an `Engine`, the *only* goroutine that ever calls `Submit`/`Cancel` — and therefore the only one that ever touches `PriceLevel.index`, `BookSide.levels`/`prices`, or `OrderBook.orders` — is `Engine.Run()`'s own goroutine. Every other caller sends a command over a channel and blocks for the reply. This is Go's "share memory by communicating": instead of locking those maps, the code structurally guarantees only one goroutine can ever reach them, so there's nothing to lock.
 
 **`Exchange` is protected by a plain `sync.Mutex` instead**, because it's a genuinely different shape of problem. `GetOrCreateEngine`'s critical section is just a map lookup (and, once per symbol, an insert plus spawning a goroutine) — nanoseconds of work, called very frequently, with no real logic to serialize. Routing that through a dedicated channel and goroutine the way `OrderBook` does would be pure overhead for no benefit. Channels earn their keep when the per-call work is substantial (matching logic); a mutex is the right tool for small, hot, frequently-accessed shared state. Neither approach is "more correct" than the other in general — the right synchronization primitive follows from the shape of the critical section it's protecting, not a blanket rule.
+
+**Shutdown doesn't close the channel callers send on.** An earlier version had `Stop()` call `close(e.inbox)` directly — but `inbox` has many senders (every `Submit`/`Cancel`/etc. call) and exactly one closer, and sending on a closed channel panics in Go regardless of who closed it. A caller racing with `Stop()` could crash the whole program. Instead, `Stop()` closes a separate `done` channel that every public method also watches via `select` alongside its actual send/receive — so a call racing with shutdown either completes normally (if it got in just before) or returns `ErrEngineStopped` (if not), but never panics. `Stop()` itself is wrapped in `sync.Once` so calling it twice is also safe, since closing an already-closed channel is a separate panic Go doesn't forgive either. This safety isn't free — routing every call through this extra `select` measurably increased `Engine`'s per-call cost (see Status) — but a server that can crash under a normal shutdown race isn't one worth calling correct.
+
+**Trade subscriptions are broadcast, not delivered reliably.** `Engine.Subscribe` hands back a buffered channel; after every `Submit`, `Run` tries to send each resulting trade to every subscriber with a non-blocking `select`/`default` — if a subscriber's buffer is full, that trade is silently dropped *for that subscriber* rather than blocking. The alternative (a blocking send) would mean one slow bot could stall matching for every other participant, which defeats the entire point of the concurrency work above. This mirrors how real market data feeds work: if you fall behind, you miss messages and need to resync from a fresh snapshot (`Depth`), rather than the exchange ever waiting for you.
 
 ## Domain concepts
 
@@ -105,14 +128,18 @@ classDiagram
 
 **`ID` is engine-assigned and doubles as the ordering key.** `Order.ID` and `Trade.ID` are assigned by the engine from an internal monotonic counter, not supplied by the caller — this makes collisions structurally impossible rather than something to detect and reject. There's no separate timestamp field: since the counter is strictly increasing, `ID` alone already answers "did this happen before that?" (`a.ID < b.ID`), the same way a Kafka offset or a database log sequence number serves as both a unique identifier and an ordering key at once.
 
+**`Depth` is an L2 view, not L3.** `BookSnapshot`/`PriceLevelSnapshot` report a price and its *total* resting quantity per level, not the individual orders making it up — the same distinction real market data feeds draw between "L2" (aggregated depth, what most participants get) and "L3" (every individual order, usually only the exchange itself and privileged participants see this). Individual order detail is still available separately via `Order(id)` if you already know an ID; `Depth` is specifically for "what does the book look like right now," which is what a market-maker bot or a CLI's `book` command actually needs.
+
 ## Status
 
-Core matching is implemented and tested: `OrderBook.Submit` matches limit and market orders by price-time priority, assigns each order's `ID` itself (so IDs can't collide or be spoofed by a caller), validates input (rejects zero quantity and mismatched symbols), and returns an error rather than failing silently. `OrderBook.Cancel` removes a resting order by ID, cleaning up its price level if that was the last order there. Property tests run thousands of randomized orders and assert quantity conservation, that the book never crosses, and that FIFO priority holds at a shared price level.
+Core matching is implemented and tested: `OrderBook.Submit` matches limit and market orders by price-time priority, assigns each order's `ID` itself (so IDs can't collide or be spoofed by a caller), validates input (rejects zero quantity, non-positive limit prices, and mismatched symbols), and returns an error rather than failing silently. `OrderBook.Cancel` removes a resting order by ID, cleaning up its price level if that was the last order there. `OrderBook.Depth` returns an L2 snapshot (price + aggregate quantity) for up to N levels per side. Property tests run thousands of randomized orders and assert quantity conservation, that the book never crosses, and that FIFO priority holds at a shared price level.
 
-`Engine` wraps an `OrderBook` so only one goroutine ever touches it directly — every other caller communicates through a channel and blocks for the reply. Verified race-free (`go test -race`) with 50 goroutines submitting concurrently.
+`Engine` wraps an `OrderBook` so only one goroutine ever touches it directly — every other caller communicates through a channel and blocks for the reply. It also supports live trade subscriptions (`Subscribe`, non-blocking broadcast that drops for slow consumers rather than stalling matching) and shuts down safely: a `Submit`/`Cancel`/etc. call racing with `Stop()` returns `ErrEngineStopped` instead of panicking, and `Stop()` is idempotent. Verified race-free (`go test -race`) including 50 goroutines submitting concurrently and 50 goroutines submitting while `Stop()` is called mid-flight.
 
 `Exchange` now hands out one `Engine` per symbol (starting its goroutine on first request) rather than a raw `OrderBook` — this is the sharding story pulled forward from a later phase, since it was a natural fit once `Engine` existed. Its own internal map is mutex-protected, verified race-free with 50 goroutines requesting the same new symbol simultaneously.
 
 Stress-tested beyond the basic concurrency check: 20,000 `Submit`/`Cancel` calls racing against each other (including cancelling orders that may already have been matched by another goroutine) on one `Engine`, and 6,000 operations spread across 3 symbols routed through `Exchange` — both race-free, with quantity conservation intact throughout.
 
-Not yet built, roughly in order: a gRPC API server (submit/cancel/snapshot, plus a streaming subscription for live trades/book updates), a CLI/REPL that's a client of that API (interactive and script-file modes), a market-maker bot, a second (futures) instrument with its own market-maker bot pricing off the spot book, and a user-built trading strategy bot to trade against all of that emergent activity.
+Benchmarked (`go test -bench`, Apple M4 Pro): `OrderBook.Submit` direct is ~150-190ns/op (~5-6M orders/sec single-threaded, 3 allocs/op); through `Engine`'s channel it's ~530-690ns/op (~1.5-1.9M orders/sec, 5 allocs/op) — the range reflects the added `select`-based safety checks from the shutdown-safety work above, a concrete, measured cost for that correctness guarantee, not just a theoretical one.
+
+Not yet built, roughly in order: a gRPC API server (submit/cancel/snapshot, plus a streaming subscription for live trades/book updates — both now have real engine-level support to sit on top of), a CLI/REPL that's a client of that API (interactive and script-file modes), a market-maker bot, a second (futures) instrument with its own market-maker bot pricing off the spot book, and a user-built trading strategy bot to trade against all of that emergent activity.

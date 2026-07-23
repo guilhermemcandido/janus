@@ -10,6 +10,9 @@ func (ob *OrderBook) Submit(order *types.Order) ([]types.Trade, error) {
 	if order.Quantity == 0 {
 		return nil, ErrInvalidQuantity
 	}
+	if order.Type == types.Limit && order.Price <= 0 {
+		return nil, ErrInvalidPrice
+	}
 
 	order.ID = ob.nextSeq()
 

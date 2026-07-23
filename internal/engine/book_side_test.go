@@ -60,6 +60,46 @@ func TestBookSide_EmptyAfterRemovingAllLevels(t *testing.T) {
 	}
 }
 
+func TestBookSide_DepthOrdersBestToWorstAndCapsAtN(t *testing.T) {
+	bs := NewBookSide(types.Buy)
+	bs.GetOrCreateLevel(100).Add(&types.Order{ID: 1, Remaining: 10})
+	bs.GetOrCreateLevel(110).Add(&types.Order{ID: 2, Remaining: 5})
+	bs.GetOrCreateLevel(95).Add(&types.Order{ID: 3, Remaining: 20})
+
+	got := bs.Depth(2)
+
+	if len(got) != 2 {
+		t.Fatalf("Depth(2) returned %d levels, want 2", len(got))
+	}
+	if got[0].Price != 110 || got[0].Quantity != 5 {
+		t.Fatalf("Depth(2)[0] = %+v, want price 110 qty 5", got[0])
+	}
+	if got[1].Price != 100 || got[1].Quantity != 10 {
+		t.Fatalf("Depth(2)[1] = %+v, want price 100 qty 10", got[1])
+	}
+}
+
+func TestBookSide_DepthOnEmptySideReturnsEmptySlice(t *testing.T) {
+	bs := NewBookSide(types.Sell)
+
+	got := bs.Depth(5)
+
+	if len(got) != 0 {
+		t.Fatalf("Depth(5) on empty side = %v, want empty", got)
+	}
+}
+
+func TestBookSide_DepthRequestingMoreThanAvailableReturnsWhatExists(t *testing.T) {
+	bs := NewBookSide(types.Buy)
+	bs.GetOrCreateLevel(100).Add(&types.Order{ID: 1, Remaining: 10})
+
+	got := bs.Depth(5)
+
+	if len(got) != 1 {
+		t.Fatalf("Depth(5) with 1 level = %v, want 1 entry", got)
+	}
+}
+
 func TestBookSide_RemoveNonExistentIsNoop(t *testing.T) {
 	bs := NewBookSide(types.Buy)
 	bs.GetOrCreateLevel(100)

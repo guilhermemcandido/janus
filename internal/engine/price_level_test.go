@@ -68,6 +68,30 @@ func TestPriceLevel_FrontDoesNotRemove(t *testing.T) {
 	}
 }
 
+func TestPriceLevel_TotalQuantity(t *testing.T) {
+	pl := NewPriceLevel(100)
+	pl.Add(&types.Order{ID: 1, Remaining: 30})
+	pl.Add(&types.Order{ID: 2, Remaining: 20})
+	pl.Add(&types.Order{ID: 3, Remaining: 50})
+
+	if got := pl.TotalQuantity(); got != 100 {
+		t.Fatalf("TotalQuantity() = %d, want 100", got)
+	}
+
+	pl.Remove(2)
+	if got := pl.TotalQuantity(); got != 80 {
+		t.Fatalf("TotalQuantity() after removing order 2 = %d, want 80", got)
+	}
+}
+
+func TestPriceLevel_TotalQuantityOnEmptyLevel(t *testing.T) {
+	pl := NewPriceLevel(100)
+
+	if got := pl.TotalQuantity(); got != 0 {
+		t.Fatalf("TotalQuantity() on empty level = %d, want 0", got)
+	}
+}
+
 func TestPriceLevel_EmptyLevel(t *testing.T) {
 	pl := NewPriceLevel(100)
 

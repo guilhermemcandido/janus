@@ -70,3 +70,12 @@ func (pl *PriceLevel) Len() int {
 func (pl *PriceLevel) IsEmpty() bool {
 	return pl.orders.Len() == 0
 }
+
+// TotalQuantity sums Remaining across every order resting at this level.
+func (pl *PriceLevel) TotalQuantity() uint64 {
+	var total uint64
+	for el := pl.orders.Front(); el != nil; el = el.Next() {
+		total += el.Value.(*types.Order).Remaining
+	}
+	return total
+}

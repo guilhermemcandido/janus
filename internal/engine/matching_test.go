@@ -56,6 +56,25 @@ func TestSubmit_RejectsZeroQuantity(t *testing.T) {
 	}
 }
 
+func TestSubmit_RejectsNonPositivePriceForLimitOrders(t *testing.T) {
+	ob := NewOrderBook("TEST")
+
+	for _, price := range []int64{0, -5} {
+		_, err := ob.Submit(newOrder(types.Sell, types.Limit, price, 10))
+		if err != ErrInvalidPrice {
+			t.Fatalf("price %d: err = %v, want ErrInvalidPrice", price, err)
+		}
+	}
+}
+
+func TestSubmit_MarketOrderIgnoresZeroPrice(t *testing.T) {
+	ob := NewOrderBook("TEST")
+
+	if _, err := ob.Submit(newOrder(types.Buy, types.Market, 0, 10)); err != nil {
+		t.Fatalf("market order with price 0 returned unexpected error: %v", err)
+	}
+}
+
 func TestSubmit_RejectsSymbolMismatch(t *testing.T) {
 	ob := NewOrderBook("TEST")
 	order := types.NewOrder("OTHER", types.Buy, types.Limit, 100, 10)

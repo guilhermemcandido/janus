@@ -33,3 +33,12 @@ func (ob *OrderBook) Order(id uint64) (*types.Order, bool) {
 	o, ok := ob.orders[id]
 	return o, ok
 }
+
+// Depth returns an immutable snapshot of up to n price levels per side.
+func (ob *OrderBook) Depth(n int) types.BookSnapshot {
+	return types.BookSnapshot{
+		Symbol: ob.Symbol,
+		Bids:   ob.bids.Depth(n),
+		Asks:   ob.asks.Depth(n),
+	}
+}
