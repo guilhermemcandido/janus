@@ -68,7 +68,7 @@ func TestEngine_ConcurrentSubmitsAreRaceFree(t *testing.T) {
 			defer wg.Done()
 			rng := rand.New(rand.NewPCG(uint64(seed), uint64(seed)))
 			for i := 0; i < perGoroutine; i++ {
-				order := randomOrder(rng)
+				order := randomOrder(rng, "TEST")
 				trades, err := e.Submit(order)
 				if err != nil {
 					t.Errorf("Submit returned unexpected error: %v", err)

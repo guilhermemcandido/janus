@@ -7,7 +7,7 @@ import (
 	"github.com/guilhermemcandido/janus/internal/types"
 )
 
-func randomOrder(rng *rand.Rand) *types.Order {
+func randomOrder(rng *rand.Rand, symbol string) *types.Order {
 	side := types.Buy
 	if rng.IntN(2) == 1 {
 		side = types.Sell
@@ -18,7 +18,7 @@ func randomOrder(rng *rand.Rand) *types.Order {
 	}
 	price := int64(90 + rng.IntN(21))
 	qty := uint64(1 + rng.IntN(20))
-	return newOrder(side, typ, price, qty)
+	return types.NewOrder(symbol, side, typ, price, qty)
 }
 
 func TestProperty_QuantityConservationAcrossRandomOrders(t *testing.T) {
@@ -30,7 +30,7 @@ func TestProperty_QuantityConservationAcrossRandomOrders(t *testing.T) {
 
 	const n = 2000
 	for i := 0; i < n; i++ {
-		order := randomOrder(rng)
+		order := randomOrder(rng, "TEST")
 		trades := mustSubmit(t, ob, order)
 		submitted = append(submitted, order)
 
@@ -54,7 +54,7 @@ func TestProperty_BookNeverCrossesAfterAnyOrder(t *testing.T) {
 
 	const n = 2000
 	for i := 0; i < n; i++ {
-		mustSubmit(t, ob, randomOrder(rng))
+		mustSubmit(t, ob, randomOrder(rng, "TEST"))
 
 		bid := ob.BestBid()
 		ask := ob.BestAsk()

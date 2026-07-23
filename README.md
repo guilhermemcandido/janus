@@ -113,4 +113,6 @@ Core matching is implemented and tested: `OrderBook.Submit` matches limit and ma
 
 `Exchange` now hands out one `Engine` per symbol (starting its goroutine on first request) rather than a raw `OrderBook` — this is the sharding story pulled forward from a later phase, since it was a natural fit once `Engine` existed. Its own internal map is mutex-protected, verified race-free with 50 goroutines requesting the same new symbol simultaneously.
 
+Stress-tested beyond the basic concurrency check: 20,000 `Submit`/`Cancel` calls racing against each other (including cancelling orders that may already have been matched by another goroutine) on one `Engine`, and 6,000 operations spread across 3 symbols routed through `Exchange` — both race-free, with quantity conservation intact throughout.
+
 Not yet built, roughly in order: a gRPC API server (submit/cancel/snapshot, plus a streaming subscription for live trades/book updates), a CLI/REPL that's a client of that API (interactive and script-file modes), a market-maker bot, a second (futures) instrument with its own market-maker bot pricing off the spot book, and a user-built trading strategy bot to trade against all of that emergent activity.
