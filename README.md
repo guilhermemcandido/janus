@@ -2,11 +2,11 @@
 
 A simulated financial market, written in Go — not just a matching engine, but a living market: independent bot programs (market makers, eventually a user-built strategy) connect over gRPC and trade against each other, so prices move from emergent activity rather than only from whatever a human submits by hand.
 
-Core matching (in-memory order book, price-time priority, limit and market orders) is implemented and tested. A channel-based concurrency wrapper (`Engine`) now serializes access to each book so multiple independent clients can submit/cancel concurrently. Still to come: a gRPC API server, a CLI/REPL client of that API, and the bot programs themselves — see Status below.
+Core matching (in-memory order book, price-time priority, limit and market orders) is implemented and tested. A channel-based concurrency wrapper (`Engine`) serializes access to each book so multiple independent clients can submit/cancel concurrently, and a gRPC API server now exposes all of it over the network. Still to come: a CLI/REPL client of that API, and the bot programs themselves — see Status below.
 
 ## Architecture
 
-Updated as implementation progresses — currently reflects everything built so far: price-time priority matching and the concurrency wrapper exist; the gRPC API, CLI, and bots do not yet.
+Updated as implementation progresses — currently reflects everything built so far: price-time priority matching, the concurrency wrapper, and the gRPC API exist; the CLI and bots do not yet.
 
 ```mermaid
 classDiagram
@@ -103,6 +103,13 @@ classDiagram
         +closeAll()
         +broadcast(trade)
     }
+    class Server {
+        -exchange Exchange
+        +SubmitOrder(req) SubmitOrderResponse~error~
+        +CancelOrder(req) CancelOrderResponse~error~
+        +GetOrderBook(req) GetOrderBookResponse~error~
+        +SubscribeTrades(req, stream) error
+    }
 
     Exchange "1" o-- "*" Engine : keyed by symbol, one goroutine each
     Engine "1" o-- "1" OrderBook : exclusive access, via channel
@@ -115,6 +122,7 @@ classDiagram
     OrderBook ..> BookSnapshot : Depth() returns
     BookSnapshot "1" o-- "*" PriceLevelSnapshot
     subscribers ..> Trade : broadcasts to subscribers
+    Server "1" o-- "1" Exchange : routes each request by symbol
 ```
 
 ## Concurrency model
@@ -128,6 +136,18 @@ classDiagram
 **Trade subscriptions are broadcast, not delivered reliably.** `Engine.Subscribe` hands back a buffered channel; after every `Submit`, `Run` tries to send each resulting trade to every subscriber with a non-blocking `select`/`default` — if a subscriber's buffer is full, that trade is silently dropped *for that subscriber* rather than blocking. The alternative (a blocking send) would mean one slow bot could stall matching for every other participant, which defeats the entire point of the concurrency work above. This mirrors how real market data feeds work: if you fall behind, you miss messages and need to resync from a fresh snapshot (`Depth`), rather than the exchange ever waiting for you.
 
 **Each command has its own type instead of one shared struct.** `Engine`'s inbox carries `any`, and `Run` dispatches with a type-switch (`submitCommand`, `cancelCommand`, `depthCommand`, ...), each with a reply channel of exactly the type it needs — a `bestBidCommand` replies with a bare `*PriceLevel`, not a struct with five other fields that don't apply to it. This started as one `kind` enum plus one shared `result` struct; it grew unwieldy once `result` reached 7 fields of genuinely different shapes (a `bool`, a `BookSnapshot`, a `subscription`) for 8 command kinds that each only used 2-3 of them — nothing stopped code from reading a field that was meaningless for whatever kind actually produced that result, since the correspondence was enforced only by convention, by reading `handle`'s switch statement, not by the compiler. A small generic helper (`call[R any]`) keeps the shutdown-safe send/receive logic in one place despite each command now having its own reply type.
+
+## gRPC API
+
+The service is defined in `proto/janus.proto` (source of truth) and generated into `internal/api/proto` via `protoc` with the Go and Go-gRPC plugins — nothing in that generated code is hand-edited. `internal/api/server.go` implements the service by routing each request to the right `Engine` via `Exchange.GetOrCreateEngine(symbol)`; `internal/api/convert.go` holds the (intentionally boring) conversions between protobuf messages and the internal `types` package. `cmd/server` is the actual binary — `go run ./cmd/server -addr :50051`.
+
+**Domain errors map to gRPC status codes, not raw Go errors.** `ErrInvalidQuantity`/`ErrInvalidPrice`/`ErrSymbolMismatch` become `InvalidArgument`, `ErrOrderNotFound` becomes `NotFound`, `ErrEngineStopped` becomes `Unavailable` — so a client gets a real, structured status it can branch on instead of parsing an error string.
+
+**`SubscribeTrades` is a server-streaming RPC**, not polling — a client opens one call and receives a `Trade` message every time one happens, for as long as the stream stays open. Server-side it's a thin wrapper: call `Engine.Subscribe()`, then loop forwarding each trade to `stream.Send` until the client disconnects (`stream.Context().Done()`) or the engine closes the channel. This is the same non-blocking-broadcast design documented above, now reachable over the network. Note that this loop deliberately returns the *context's* error (not `nil`) when the client disconnects or its deadline expires — that's not a missed "graceful shutdown," it's reporting the true reason the stream ended (client-caused) rather than pretending the server voluntarily finished; the genuinely voluntary case (the engine closing the trade channel from its own side) already returns `nil` on a separate branch.
+
+**Unary handlers check `ctx.Err()` before doing any work, but don't propagate context into `Engine`.** If a request arrives already past its deadline (e.g. it sat queued upstream), the handler rejects it immediately via `status.FromContextError` instead of doing the work anyway. Going further — threading context into `Engine.Submit`/`Cancel`/etc. so an in-flight call could be aborted mid-flight — would need real API changes to `Engine` for a scenario that's currently theoretical: engine calls complete in the hundreds of nanoseconds, far faster than any client could realistically observe and act on a cancellation. Not worth the added surface area until something actually demonstrates the need.
+
+**Tested two ways.** `internal/api/server_test.go` uses `google.golang.org/grpc/test/bufconn` for a real client/server exercising the actual gRPC wire protocol, just over an in-memory connection instead of a real socket — covering matching, cancellation, book snapshots, error codes, and the streaming subscription. Beyond that, the compiled server binary was run as a real process on a real TCP port and driven with `grpcurl` end-to-end (order matching, book depth, `NotFound`/`InvalidArgument` error codes, and a live trade arriving on an open stream) to confirm it actually works as a standalone service, not just inside a test process.
 
 ## Domain concepts
 
@@ -153,4 +173,6 @@ Stress-tested beyond the basic concurrency check: 20,000 `Submit`/`Cancel` calls
 
 Benchmarked (`go test -bench`, Apple M4 Pro): `OrderBook.Submit` direct is ~150-190ns/op (~5-6M orders/sec single-threaded, 3 allocs/op); through `Engine`'s channel it's ~530-690ns/op (~1.5-1.9M orders/sec, 5 allocs/op) — the range reflects the added `select`-based safety checks from the shutdown-safety work above, a concrete, measured cost for that correctness guarantee, not just a theoretical one.
 
-Not yet built, roughly in order: a gRPC API server (submit/cancel/snapshot, plus a streaming subscription for live trades/book updates — both now have real engine-level support to sit on top of), a CLI/REPL that's a client of that API (interactive and script-file modes), a market-maker bot, a second (futures) instrument with its own market-maker bot pricing off the spot book, and a user-built trading strategy bot to trade against all of that emergent activity.
+The gRPC API server is implemented and tested: `SubmitOrder`, `CancelOrder`, `GetOrderBook`, and the `SubscribeTrades` streaming RPC, all backed directly by `Exchange`/`Engine` with no logic duplicated in the transport layer. Domain errors map to proper gRPC status codes. Verified both with in-process (`bufconn`) integration tests and by running the actual compiled server and driving it with `grpcurl` over a real socket.
+
+Not yet built, roughly in order: a CLI/REPL that's a client of that API (interactive and script-file modes), a market-maker bot, a second (futures) instrument with its own market-maker bot pricing off the spot book, and a user-built trading strategy bot to trade against all of that emergent activity.

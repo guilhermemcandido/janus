@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package janus;
+
+option go_package = "github.com/guilhermemcandido/janus/internal/api/proto";
+
+service Exchange {
+  rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
+  rpc SubscribeTrades(SubscribeTradesRequest) returns (stream Trade);
+}
+
+enum Side {
+  BUY = 0;
+  SELL = 1;
+}
+
+enum OrderType {
+  LIMIT = 0;
+  MARKET = 1;
+}
+
+message Order {
+  uint64 id = 1;
+  string symbol = 2;
+  Side side = 3;
+  OrderType type = 4;
+  int64 price = 5;
+  uint64 quantity = 6;
+  uint64 remaining = 7;
+}
+
+message Trade {
+  uint64 id = 1;
+  string symbol = 2;
+  int64 price = 3;
+  uint64 quantity = 4;
+  uint64 maker_order_id = 5;
+  uint64 taker_order_id = 6;
+}
+
+message PriceLevel {
+  int64 price = 1;
+  uint64 quantity = 2;
+}
+
+message SubmitOrderRequest {
+  string symbol = 1;
+  Side side = 2;
+  OrderType type = 3;
+  int64 price = 4;
+  uint64 quantity = 5;
+}
+
+message SubmitOrderResponse {
+  Order order = 1;
+  repeated Trade trades = 2;
+}
+
+message CancelOrderRequest {
+  string symbol = 1;
+  uint64 order_id = 2;
+}
+
+message CancelOrderResponse {
+  Order order = 1;
+}
+
+message GetOrderBookRequest {
+  string symbol = 1;
+  int32 depth = 2;
+}
+
+message GetOrderBookResponse {
+  string symbol = 1;
+  repeated PriceLevel bids = 2;
+  repeated PriceLevel asks = 3;
+}
+
+message SubscribeTradesRequest {
+  string symbol = 1;
+}
