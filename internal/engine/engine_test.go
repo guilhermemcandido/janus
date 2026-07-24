@@ -49,6 +49,34 @@ func TestEngine_SubmitCancelAndQueries(t *testing.T) {
 	}
 }
 
+func TestEngine_BestBid(t *testing.T) {
+	book := NewOrderBook("TEST")
+	e := NewEngine(book)
+	go e.Run()
+	defer e.Stop()
+
+	if e.BestBid() != nil {
+		t.Fatalf("expected BestBid to be nil on an empty book")
+	}
+
+	buy := newOrder(types.Buy, types.Limit, 100, 10)
+	if _, err := e.Submit(buy); err != nil {
+		t.Fatalf("Submit returned unexpected error: %v", err)
+	}
+
+	best := e.BestBid()
+	if best == nil || best.Price() != 100 {
+		t.Fatalf("BestBid() = %v, want price 100", best)
+	}
+
+	if _, err := e.Cancel(buy.ID); err != nil {
+		t.Fatalf("Cancel returned unexpected error: %v", err)
+	}
+	if e.BestBid() != nil {
+		t.Fatalf("expected BestBid to be nil after cancelling the only bid")
+	}
+}
+
 func TestEngine_Depth(t *testing.T) {
 	book := NewOrderBook("TEST")
 	e := NewEngine(book)

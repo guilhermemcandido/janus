@@ -81,9 +81,9 @@ classDiagram
 
     class Engine {
         -book OrderBook
-        -inbox chan~command~
+        -inbox chan~any~
         -done chan~struct~
-        -subscribers map~uint64,chan_Trade~
+        -subs subscribers
         +Run()
         +Stop()
         +Submit(order) Trade[]~error~
@@ -95,9 +95,18 @@ classDiagram
         +Subscribe() chan_Trade,func
         +Symbol() string
     }
+    class subscribers {
+        -byID map~uint64,chan_Trade~
+        -next uint64
+        +add(ch) uint64
+        +remove(id)
+        +closeAll()
+        +broadcast(trade)
+    }
 
     Exchange "1" o-- "*" Engine : keyed by symbol, one goroutine each
     Engine "1" o-- "1" OrderBook : exclusive access, via channel
+    Engine "1" o-- "1" subscribers
     OrderBook "1" o-- "2" BookSide : bids / asks
     BookSide "1" o-- "*" PriceLevel
     PriceLevel "1" o-- "*" Order : FIFO queue
@@ -105,7 +114,7 @@ classDiagram
     Trade ..> Order : references MakerOrderID / TakerOrderID
     OrderBook ..> BookSnapshot : Depth() returns
     BookSnapshot "1" o-- "*" PriceLevelSnapshot
-    Engine ..> Trade : broadcasts to subscribers
+    subscribers ..> Trade : broadcasts to subscribers
 ```
 
 ## Concurrency model
@@ -117,6 +126,8 @@ classDiagram
 **Shutdown doesn't close the channel callers send on.** An earlier version had `Stop()` call `close(e.inbox)` directly — but `inbox` has many senders (every `Submit`/`Cancel`/etc. call) and exactly one closer, and sending on a closed channel panics in Go regardless of who closed it. A caller racing with `Stop()` could crash the whole program. Instead, `Stop()` closes a separate `done` channel that every public method also watches via `select` alongside its actual send/receive — so a call racing with shutdown either completes normally (if it got in just before) or returns `ErrEngineStopped` (if not), but never panics. `Stop()` itself is wrapped in `sync.Once` so calling it twice is also safe, since closing an already-closed channel is a separate panic Go doesn't forgive either. This safety isn't free — routing every call through this extra `select` measurably increased `Engine`'s per-call cost (see Status) — but a server that can crash under a normal shutdown race isn't one worth calling correct.
 
 **Trade subscriptions are broadcast, not delivered reliably.** `Engine.Subscribe` hands back a buffered channel; after every `Submit`, `Run` tries to send each resulting trade to every subscriber with a non-blocking `select`/`default` — if a subscriber's buffer is full, that trade is silently dropped *for that subscriber* rather than blocking. The alternative (a blocking send) would mean one slow bot could stall matching for every other participant, which defeats the entire point of the concurrency work above. This mirrors how real market data feeds work: if you fall behind, you miss messages and need to resync from a fresh snapshot (`Depth`), rather than the exchange ever waiting for you.
+
+**Each command has its own type instead of one shared struct.** `Engine`'s inbox carries `any`, and `Run` dispatches with a type-switch (`submitCommand`, `cancelCommand`, `depthCommand`, ...), each with a reply channel of exactly the type it needs — a `bestBidCommand` replies with a bare `*PriceLevel`, not a struct with five other fields that don't apply to it. This started as one `kind` enum plus one shared `result` struct; it grew unwieldy once `result` reached 7 fields of genuinely different shapes (a `bool`, a `BookSnapshot`, a `subscription`) for 8 command kinds that each only used 2-3 of them — nothing stopped code from reading a field that was meaningless for whatever kind actually produced that result, since the correspondence was enforced only by convention, by reading `handle`'s switch statement, not by the compiler. A small generic helper (`call[R any]`) keeps the shutdown-safe send/receive logic in one place despite each command now having its own reply type.
 
 ## Domain concepts
 
