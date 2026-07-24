@@ -110,6 +110,16 @@ classDiagram
         +GetOrderBook(req) GetOrderBookResponse~error~
         +SubscribeTrades(req, stream) error
     }
+    class Client {
+        -conn grpc.ClientConn
+        -raw pb.ExchangeClient
+        +Dial(addr) Client~error~
+        +SubmitOrder(...) Order,Trade[]~error~
+        +CancelOrder(...) Order~error~
+        +GetOrderBook(...) BookSnapshot~error~
+        +SubscribeTrades(...) chan_Trade~error~
+        +Close() error
+    }
 
     Exchange "1" o-- "*" Engine : keyed by symbol, one goroutine each
     Engine "1" o-- "1" OrderBook : exclusive access, via channel
@@ -123,6 +133,7 @@ classDiagram
     BookSnapshot "1" o-- "*" PriceLevelSnapshot
     subscribers ..> Trade : broadcasts to subscribers
     Server "1" o-- "1" Exchange : routes each request by symbol
+    Client ..> Server : gRPC, over the network
 ```
 
 ## Concurrency model
@@ -149,6 +160,16 @@ The service is defined in `proto/janus.proto` (source of truth) and generated in
 
 **Tested two ways.** `internal/api/server_test.go` uses `google.golang.org/grpc/test/bufconn` for a real client/server exercising the actual gRPC wire protocol, just over an in-memory connection instead of a real socket — covering matching, cancellation, book snapshots, error codes, and the streaming subscription. Beyond that, the compiled server binary was run as a real process on a real TCP port and driven with `grpcurl` end-to-end (order matching, book depth, `NotFound`/`InvalidArgument` error codes, and a live trade arriving on an open stream) to confirm it actually works as a standalone service, not just inside a test process.
 
+## Go client library (`pkg/client`)
+
+Unlike `internal/api` (the server), this is meant to be imported — by the CLI, and by every bot to come (`#21`-`#23`). That's the actual reason it lives under `pkg/` instead of `internal/`: nothing outside this module needs the server's Go code (consumers talk to it over the network in any language), but the whole point of a client library is being importable, including from a completely separate Go module later.
+
+**Three type representations exist end to end, not two.** `internal/types` is the engine's own domain vocabulary; the generated protobuf types are the wire contract; `pkg/client`'s `Order`/`Trade`/`PriceLevel`/`BookSnapshot` are a third, hand-written set, deliberately decoupled from both. This isn't duplication for its own sake — `pkg/client`'s public types couldn't *be* `internal/types` even if we wanted, since anything under `internal/` is invisible to code outside this module by construction, and using the generated proto types directly as the public API would lock the client's contract to the wire format instead of letting them evolve independently. `pkg/client/convert.go` is the small, boring mapper between the wire format and the public types — the mirror image of `internal/api/convert.go`, which maps the wire format to the engine's own domain types on the server side.
+
+**`SubscribeTrades` returns a plain `<-chan Trade`**, not a raw gRPC stream — a goroutine inside `Client.SubscribeTrades` loops `stream.Recv()` and forwards each trade to the channel until the context is cancelled or the server ends the stream. Every consumer just ranges over a channel; none of them need to know gRPC streaming exists.
+
+**Tested the same two ways as the server**: `bufconn`-based integration tests (`pkg/client/client_test.go`) exercising the real client against a real in-process server, plus a throwaway program run against the actual compiled `cmd/server` binary over a real TCP socket — specifically to exercise `Dial`'s real-network code path, which the `bufconn` tests (they inject a custom dialer) don't touch at all.
+
 ## Domain concepts
 
 **Price is an integer, never a float.** `Price` is stored as an integer number of ticks (the smallest price increment), not `float64`. Floats introduce rounding error that's unacceptable once you're summing trade values — this is standard practice in real trading systems.
@@ -166,6 +187,8 @@ The service is defined in `proto/janus.proto` (source of truth) and generated in
 Core matching is implemented and tested: `OrderBook.Submit` matches limit and market orders by price-time priority, assigns each order's `ID` itself (so IDs can't collide or be spoofed by a caller), validates input (rejects zero quantity, non-positive limit prices, and mismatched symbols), and returns an error rather than failing silently. `OrderBook.Cancel` removes a resting order by ID, cleaning up its price level if that was the last order there. `OrderBook.Depth` returns an L2 snapshot (price + aggregate quantity) for up to N levels per side. Property tests run thousands of randomized orders and assert quantity conservation, that the book never crosses, and that FIFO priority holds at a shared price level.
 
 `Engine` wraps an `OrderBook` so only one goroutine ever touches it directly — every other caller communicates through a channel and blocks for the reply. It also supports live trade subscriptions (`Subscribe`, non-blocking broadcast that drops for slow consumers rather than stalling matching) and shuts down safely: a `Submit`/`Cancel`/etc. call racing with `Stop()` returns `ErrEngineStopped` instead of panicking, and `Stop()` is idempotent. Verified race-free (`go test -race`) including 50 goroutines submitting concurrently and 50 goroutines submitting while `Stop()` is called mid-flight.
+
+`pkg/client` is a public, importable Go client for the gRPC API — `Dial`, `SubmitOrder`, `CancelOrder`, `GetOrderBook`, `SubscribeTrades` — with its own decoupled types and a mapper to/from the wire format. This is the shared foundation the CLI and every future bot will sit on, rather than each hand-rolling its own gRPC plumbing.
 
 `Exchange` now hands out one `Engine` per symbol (starting its goroutine on first request) rather than a raw `OrderBook` — this is the sharding story pulled forward from a later phase, since it was a natural fit once `Engine` existed. Its own internal map is mutex-protected, verified race-free with 50 goroutines requesting the same new symbol simultaneously.
 
