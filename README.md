@@ -2,11 +2,11 @@
 
 A simulated financial market, written in Go — not just a matching engine, but a living market: independent bot programs (market makers, eventually a user-built strategy) connect over gRPC and trade against each other, so prices move from emergent activity rather than only from whatever a human submits by hand.
 
-Core matching (in-memory order book, price-time priority, limit and market orders) is implemented and tested. A channel-based concurrency wrapper (`Engine`) serializes access to each book so multiple independent clients can submit/cancel concurrently, and a gRPC API server now exposes all of it over the network. Still to come: a CLI/REPL client of that API, and the bot programs themselves — see Status below.
+Core matching (in-memory order book, price-time priority, limit and market orders) is implemented and tested. A channel-based concurrency wrapper (`Engine`) serializes access to each book so multiple independent clients can submit/cancel concurrently, a gRPC API server exposes all of it over the network, and both a public Go client library (`pkg/client`) and a CLI on top of it are built and tested. Still to come: the bot programs — see Status below.
 
 ## Architecture
 
-Updated as implementation progresses — currently reflects everything built so far: price-time priority matching, the concurrency wrapper, and the gRPC API exist; the CLI and bots do not yet.
+Updated as implementation progresses — currently reflects everything built so far: price-time priority matching, the concurrency wrapper, the gRPC API, the Go client library, and the CLI all exist; the bots do not yet.
 
 ```mermaid
 classDiagram
@@ -170,6 +170,16 @@ Unlike `internal/api` (the server), this is meant to be imported — by the CLI,
 
 **Tested the same two ways as the server**: `bufconn`-based integration tests (`pkg/client/client_test.go`) exercising the real client against a real in-process server, plus a throwaway program run against the actual compiled `cmd/server` binary over a real TCP socket — specifically to exercise `Dial`'s real-network code path, which the `bufconn` tests (they inject a custom dialer) don't touch at all.
 
+## CLI (`cmd/cli`)
+
+The first real consumer of `pkg/client` — a REPL and script-file runner, nothing more. `internal/cli/parse.go` turns one line of text (`buy 100 @ 50`, `sell 50 @ 49 market`, `cancel 123`, `book 10`, `watch`) into a `Command`, as a pure function with no I/O, so it's unit-tested without any network involved. `internal/cli/run.go` reads lines from any `io.Reader` — `os.Stdin` for interactive use, or a script file — and dispatches each parsed command to the matching `pkg/client` call, so the exact same code path drives both modes.
+
+**`-symbol` has no default and is required.** It started with one (`AAPL`), which turned out to be exactly the kind of silent assumption we've avoided everywhere else in this codebase (explicit price required for limit orders, no implicit zero quantity, etc.) — defaulting the *symbol* specifically is riskier than most flags, because getting it wrong doesn't produce an error, it silently trades a different, valid instrument than the one you meant. `-addr` keeps its default (`localhost:50051`) since a wrong address just fails loudly to connect, a meaningfully different failure mode. Omitting `-symbol` now exits immediately with a usage message.
+
+**`watch` only stops on an OS signal (`Ctrl+C`), not on stdin closing.** It calls `signal.NotifyContext` scoped to just that one command, so `Ctrl+C` cancels the subscription and drops back to the prompt without killing the whole CLI process or permanently hijacking the signal for the rest of the session.
+
+**Validated three ways**: unit tests for the parser (`internal/cli/parse_test.go`), full-loop tests against a real in-process server with captured output (`internal/cli/run_test.go`), and a real end-to-end pass — the actual compiled `cmd/cli` binary driving the actual compiled `cmd/server` binary over a real socket, via both a script file and piped stdin, including confirming `watch` receives a trade live from a second concurrent CLI session and stops cleanly on `SIGINT`.
+
 ## Domain concepts
 
 **Price is an integer, never a float.** `Price` is stored as an integer number of ticks (the smallest price increment), not `float64`. Floats introduce rounding error that's unacceptable once you're summing trade values — this is standard practice in real trading systems.
@@ -198,4 +208,6 @@ Benchmarked (`go test -bench`, Apple M4 Pro): `OrderBook.Submit` direct is ~150-
 
 The gRPC API server is implemented and tested: `SubmitOrder`, `CancelOrder`, `GetOrderBook`, and the `SubscribeTrades` streaming RPC, all backed directly by `Exchange`/`Engine` with no logic duplicated in the transport layer. Domain errors map to proper gRPC status codes. Verified both with in-process (`bufconn`) integration tests and by running the actual compiled server and driving it with `grpcurl` over a real socket.
 
-Not yet built, roughly in order: a CLI/REPL that's a client of that API (interactive and script-file modes), a market-maker bot, a second (futures) instrument with its own market-maker bot pricing off the spot book, and a user-built trading strategy bot to trade against all of that emergent activity.
+The CLI (`cmd/cli`) is implemented and tested — interactive and script-file modes, both driving `pkg/client`. Verified end to end with the real compiled binaries: order submission and matching, book depth, cancellation, market orders, and a live `watch` subscription receiving a trade from a second concurrent CLI session and stopping cleanly on `Ctrl+C`.
+
+Not yet built, roughly in order: a market-maker bot, a second (futures) instrument with its own market-maker bot pricing off the spot book, a user-built trading strategy bot to trade against all of that emergent activity, and — once there's actual emergent activity worth watching — a UI to visualize it live.
