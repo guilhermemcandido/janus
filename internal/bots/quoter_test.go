@@ -66,12 +66,14 @@ func (f fixedPriceSource) Price(ctx context.Context) (int64, error) {
 	return f.price, nil
 }
 
-func TestBot_RequoteRestsBidAndAsk(t *testing.T) {
+func TestQuoter_ActRestsBidAndAsk(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	bot := New(c, testConfig(), fixedPriceSource{100})
+	q := NewQuoter(c, testConfig(), fixedPriceSource{100})
 
-	bot.requote(ctx, &bytes.Buffer{})
+	if err := q.Act(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
 
 	book, err := c.GetOrderBook(ctx, "AAPL", 10)
 	if err != nil {
@@ -85,18 +87,22 @@ func TestBot_RequoteRestsBidAndAsk(t *testing.T) {
 	}
 }
 
-func TestBot_RequoteReplacesPreviousQuotes(t *testing.T) {
+func TestQuoter_ActReplacesPreviousQuotes(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	bot := New(c, testConfig(), fixedPriceSource{100})
+	q := NewQuoter(c, testConfig(), fixedPriceSource{100})
 
-	bot.requote(ctx, &bytes.Buffer{})
-	firstBidID, firstAskID := bot.bidID, bot.askID
+	if err := q.Act(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+	firstBidID, firstAskID := q.bidID, q.askID
 
-	bot.requote(ctx, &bytes.Buffer{})
+	if err := q.Act(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
 
-	if bot.bidID == firstBidID || bot.askID == firstAskID {
-		t.Fatalf("expected fresh order IDs after second requote, got same IDs (%d, %d)", bot.bidID, bot.askID)
+	if q.bidID == firstBidID || q.askID == firstAskID {
+		t.Fatalf("expected fresh order IDs after second Act, got same IDs (%d, %d)", q.bidID, q.askID)
 	}
 
 	book, err := c.GetOrderBook(ctx, "AAPL", 10)
@@ -108,12 +114,14 @@ func TestBot_RequoteReplacesPreviousQuotes(t *testing.T) {
 	}
 }
 
-func TestBot_RequoteToleratesAlreadyFilledQuote(t *testing.T) {
+func TestQuoter_ActToleratesAlreadyFilledQuote(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	bot := New(c, testConfig(), fixedPriceSource{100})
+	q := NewQuoter(c, testConfig(), fixedPriceSource{100})
 
-	bot.requote(ctx, &bytes.Buffer{})
+	if err := q.Act(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
 
 	// Fill the bot's resting ask (100+2=102) from another participant.
 	if _, _, err := c.SubmitOrder(ctx, "AAPL", client.Buy, client.Limit, 102, 10); err != nil {
@@ -121,9 +129,76 @@ func TestBot_RequoteToleratesAlreadyFilledQuote(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	bot.requote(ctx, &out)
+	if err := q.Act(ctx, &out); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
 
 	if strings.Contains(out.String(), "error") {
-		t.Fatalf("requote logged an error after a quote was already filled: %s", out.String())
+		t.Fatalf("Act logged an error after a quote was already filled: %s", out.String())
+	}
+}
+
+func TestQuoter_CancelIfRestingKeepsIDOnNonNotFoundError(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	q := NewQuoter(c, testConfig(), fixedPriceSource{100})
+
+	if err := q.Act(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+	bidID := q.bidID
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ok := q.cancelIfResting(cancelledCtx, &q.bidID, &bytes.Buffer{})
+
+	if ok {
+		t.Fatalf("cancelIfResting = true, want false (cancelled context should surface a non-NotFound error)")
+	}
+	if q.bidID != bidID {
+		t.Fatalf("bidID = %d, want unchanged %d after a failed cancel", q.bidID, bidID)
+	}
+}
+
+func TestQuoter_ActSkipsResubmitWhenCancelFails(t *testing.T) {
+	c := newTestClient(t)
+	q := NewQuoter(c, testConfig(), fixedPriceSource{100})
+
+	if err := q.Act(context.Background(), &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+	bidID := q.bidID
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := q.Act(cancelledCtx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+
+	if q.bidID != bidID {
+		t.Fatalf("bidID = %d, want unchanged %d: Act must not resubmit when the old quote's cancel state is unknown", q.bidID, bidID)
+	}
+}
+
+func TestQuoter_CloseCancelsRestingQuotes(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	q := NewQuoter(c, testConfig(), fixedPriceSource{100})
+
+	if err := q.Act(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+
+	var _ Closer = q // Quoter must satisfy Closer for Trader to clean it up on shutdown.
+	q.Close(ctx, &bytes.Buffer{})
+
+	book, err := c.GetOrderBook(ctx, "AAPL", 10)
+	if err != nil {
+		t.Fatalf("GetOrderBook returned error: %v", err)
+	}
+	if len(book.Bids) != 0 || len(book.Asks) != 0 {
+		t.Fatalf("book = %+v, want empty after Close", book)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,8 +16,9 @@ type PriceSource interface {
 	Price(ctx context.Context) (int64, error)
 }
 
-// Bot continuously quotes both sides of a book around a reference price.
-type Bot struct {
+// Quoter continuously quotes both sides of a book around a reference price. It implements
+// Strategy (each Act is one requote cycle) and Closer (cancels resting quotes on shutdown).
+type Quoter struct {
 	c      *client.Client
 	cfg    Config
 	source PriceSource
@@ -27,76 +27,75 @@ type Bot struct {
 	askID uint64
 }
 
-// New creates a Bot that quotes cfg.Symbol using source for its reference price.
-func New(c *client.Client, cfg Config, source PriceSource) *Bot {
-	return &Bot{c: c, cfg: cfg, source: source}
+// NewQuoter creates a Quoter that quotes cfg.Symbol using source for its reference price.
+func NewQuoter(c *client.Client, cfg Config, source PriceSource) *Quoter {
+	return &Quoter{c: c, cfg: cfg, source: source}
 }
 
-// Run quotes on cfg.Interval until ctx is cancelled, then cancels any resting quotes before returning.
-func (b *Bot) Run(ctx context.Context, out io.Writer) error {
-	ticker := time.NewTicker(b.cfg.Interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			b.cancelQuotes(context.Background(), out)
-			return nil
-		case <-ticker.C:
-			b.requote(ctx, out)
-		}
-	}
-}
-
-// requote replaces the bot's resting quotes with fresh ones around the next reference price.
-// Cancels old quotes before submitting new ones; the reverse order risks a self-trade.
-func (b *Bot) requote(ctx context.Context, out io.Writer) {
-	ref, err := b.source.Price(ctx)
+// Act implements Strategy: cancels old quotes before submitting new ones, since the reverse
+// order risks a self-trade if the reference price moved by more than the spread. A side is only
+// resubmitted if its old quote was actually cancelled (or already gone) - otherwise its state is
+// unknown and resubmitting would risk stacking a duplicate quote on top of it.
+func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
+	ref, err := q.source.Price(ctx)
 	if err != nil {
 		fmt.Fprintln(out, "error getting reference price:", err)
-		return
+		return nil
 	}
 
-	b.cancelQuotes(ctx, out)
+	bidPrice := ref - q.cfg.HalfSpread
+	askPrice := ref + q.cfg.HalfSpread
 
-	bidPrice := ref - b.cfg.HalfSpread
-	askPrice := ref + b.cfg.HalfSpread
+	var bidTrades, askTrades []client.Trade
+	submittedBid, submittedAsk := false, false
 
-	bid, bidTrades, err := b.c.SubmitOrder(ctx, b.cfg.Symbol, client.Buy, client.Limit, bidPrice, b.cfg.Quantity)
-	if err != nil {
-		fmt.Fprintln(out, "error submitting bid:", err)
-	} else {
-		b.bidID = bid.ID
+	if q.cancelIfResting(ctx, &q.bidID, out) {
+		bid, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Buy, client.Limit, bidPrice, q.cfg.Quantity)
+		if err != nil {
+			fmt.Fprintln(out, "error submitting bid:", err)
+		} else {
+			q.bidID, bidTrades, submittedBid = bid.ID, trades, true
+		}
 	}
 
-	ask, askTrades, err := b.c.SubmitOrder(ctx, b.cfg.Symbol, client.Sell, client.Limit, askPrice, b.cfg.Quantity)
-	if err != nil {
-		fmt.Fprintln(out, "error submitting ask:", err)
-	} else {
-		b.askID = ask.ID
+	if q.cancelIfResting(ctx, &q.askID, out) {
+		ask, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Sell, client.Limit, askPrice, q.cfg.Quantity)
+		if err != nil {
+			fmt.Fprintln(out, "error submitting ask:", err)
+		} else {
+			q.askID, askTrades, submittedAsk = ask.ID, trades, true
+		}
 	}
 
-	fmt.Fprintf(out, "quoting %s: bid %d x %d / ask %d x %d\n", b.cfg.Symbol, b.cfg.Quantity, bidPrice, b.cfg.Quantity, askPrice)
+	if submittedBid || submittedAsk {
+		fmt.Fprintf(out, "quoting %s: bid %d x %d / ask %d x %d\n", q.cfg.Symbol, q.cfg.Quantity, bidPrice, q.cfg.Quantity, askPrice)
+	}
 	for _, tr := range bidTrades {
 		fmt.Fprintf(out, "  bid matched %d @ %d (maker %d)\n", tr.Quantity, tr.Price, tr.MakerOrderID)
 	}
 	for _, tr := range askTrades {
 		fmt.Fprintf(out, "  ask matched %d @ %d (maker %d)\n", tr.Quantity, tr.Price, tr.MakerOrderID)
 	}
+	return nil
 }
 
-// cancelQuotes cancels both resting quotes, if any, tolerating ones already filled.
-func (b *Bot) cancelQuotes(ctx context.Context, out io.Writer) {
-	b.cancelIfResting(ctx, &b.bidID, out)
-	b.cancelIfResting(ctx, &b.askID, out)
+// Close implements Closer, cancelling any resting quotes before Trader.Run returns.
+func (q *Quoter) Close(ctx context.Context, out io.Writer) {
+	q.cancelIfResting(ctx, &q.bidID, out)
+	q.cancelIfResting(ctx, &q.askID, out)
 }
 
-func (b *Bot) cancelIfResting(ctx context.Context, id *uint64, out io.Writer) {
+// cancelIfResting cancels the resting order at *id, if any, tolerating ones already filled.
+// Returns whether it's now safe to submit a replacement: false only when a real cancel error
+// left the old order's resting state unknown.
+func (q *Quoter) cancelIfResting(ctx context.Context, id *uint64, out io.Writer) bool {
 	if *id == 0 {
-		return
+		return true
 	}
-	if _, err := b.c.CancelOrder(ctx, b.cfg.Symbol, *id); err != nil && status.Code(err) != codes.NotFound {
+	if _, err := q.c.CancelOrder(ctx, q.cfg.Symbol, *id); err != nil && status.Code(err) != codes.NotFound {
 		fmt.Fprintln(out, "error cancelling order", *id, ":", err)
+		return false
 	}
 	*id = 0
+	return true
 }

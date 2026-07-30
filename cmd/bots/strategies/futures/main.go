@@ -75,8 +75,8 @@ func main() {
 	defer stop()
 
 	source := futures.NewSpotMidPriceSource(c, *spotSymbol, *basis, *fallback)
-	bot := bots.New(c, cfg, source)
-	if err := bot.Run(ctx, os.Stdout); err != nil {
+	trader := bots.NewTrader(bots.NewQuoter(c, cfg, source), cfg.Interval)
+	if err := trader.Run(ctx, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
 }
