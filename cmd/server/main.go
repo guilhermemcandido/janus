@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"google.golang.org/grpc"
 
@@ -26,6 +30,15 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterExchangeServer(grpcServer, api.NewServer(exchange))
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		<-ctx.Done()
+		log.Println("shutting down...")
+		grpcServer.GracefulStop()
+	}()
 
 	log.Printf("janus gRPC server listening on %s", *addr)
 	if err := grpcServer.Serve(lis); err != nil {

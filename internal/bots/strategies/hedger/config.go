@@ -22,6 +22,9 @@ func (cfg Config) Validate() error {
 	if cfg.SpotSymbol == "" {
 		return errors.New("a spot symbol is required")
 	}
+	if cfg.FuturesSymbol == cfg.SpotSymbol {
+		return errors.New("futures and spot symbols must be different")
+	}
 	if cfg.FlowQuantity == 0 {
 		return errors.New("flow quantity must be positive")
 	}
