@@ -103,6 +103,9 @@ func parseBook(fields []string) (Command, error) {
 		if err != nil {
 			return Command{}, fmt.Errorf("invalid depth %q: %w", fields[1], err)
 		}
+		if n < 0 {
+			return Command{}, fmt.Errorf("invalid depth %q: must not be negative", fields[1])
+		}
 		depth = n
 	}
 	return Command{Kind: Book, Depth: depth}, nil

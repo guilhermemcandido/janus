@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
@@ -57,6 +58,9 @@ func (s *Server) CancelOrder(ctx context.Context, req *pb.CancelOrderRequest) (*
 func (s *Server) GetOrderBook(ctx context.Context, req *pb.GetOrderBookRequest) (*pb.GetOrderBookResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
+	}
+	if req.Depth < 0 {
+		return nil, status.Error(codes.InvalidArgument, "depth must not be negative")
 	}
 
 	eng := s.exchange.GetOrCreateEngine(req.Symbol)

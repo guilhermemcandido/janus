@@ -100,6 +100,17 @@ func TestBookSide_DepthRequestingMoreThanAvailableReturnsWhatExists(t *testing.T
 	}
 }
 
+func TestBookSide_DepthWithNegativeNReturnsEmptySliceInsteadOfPanicking(t *testing.T) {
+	bs := NewBookSide(types.Buy)
+	bs.GetOrCreateLevel(100).Add(&types.Order{ID: 1, Remaining: 10})
+
+	got := bs.Depth(-1)
+
+	if len(got) != 0 {
+		t.Fatalf("Depth(-1) = %v, want empty", got)
+	}
+}
+
 func TestBookSide_RemoveNonExistentIsNoop(t *testing.T) {
 	bs := NewBookSide(types.Buy)
 	bs.GetOrCreateLevel(100)

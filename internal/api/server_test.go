@@ -166,6 +166,15 @@ func TestServer_GetOrderBook(t *testing.T) {
 	}
 }
 
+func TestServer_GetOrderBookRejectsNegativeDepth(t *testing.T) {
+	client := newTestClient(t)
+
+	_, err := client.GetOrderBook(context.Background(), &pb.GetOrderBookRequest{Symbol: "AAPL", Depth: -1})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status code = %v, want InvalidArgument (err: %v)", status.Code(err), err)
+	}
+}
+
 func TestServer_SubscribeTradesReceivesLiveTrades(t *testing.T) {
 	client := newTestClient(t)
 	ctx, cancel := context.WithCancel(context.Background())

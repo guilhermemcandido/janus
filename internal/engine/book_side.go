@@ -78,6 +78,9 @@ func (bs *BookSide) IsEmpty() bool {
 
 // Depth returns up to n price levels from best to worst, as an immutable snapshot.
 func (bs *BookSide) Depth(n int) []types.PriceLevelSnapshot {
+	if n < 0 {
+		n = 0
+	}
 	if n > len(bs.prices) {
 		n = len(bs.prices)
 	}

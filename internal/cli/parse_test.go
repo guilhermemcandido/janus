@@ -69,6 +69,12 @@ func TestParse_BookExplicitDepth(t *testing.T) {
 	}
 }
 
+func TestParse_BookRejectsNegativeDepth(t *testing.T) {
+	if _, err := Parse("book -1"); err == nil {
+		t.Fatalf("Parse(%q) = nil error, want an error", "book -1")
+	}
+}
+
 func TestParse_WatchHelpQuit(t *testing.T) {
 	cases := map[string]Kind{
 		"watch": Watch,
