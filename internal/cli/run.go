@@ -18,7 +18,7 @@ func Run(ctx context.Context, c *client.Client, symbol string, in io.Reader, out
 	scanner := bufio.NewScanner(in)
 	for {
 		if interactive {
-			fmt.Fprint(out, "janus> ")
+			fmt.Fprintf(out, "%s> ", symbol)
 		}
 		if !scanner.Scan() {
 			return scanner.Err()
@@ -30,23 +30,30 @@ func Run(ctx context.Context, c *client.Client, symbol string, in io.Reader, out
 			continue
 		}
 
-		switch cmd.Kind {
-		case Noop:
-			continue
-		case Quit:
+		if quit := Exec(ctx, c, symbol, cmd, out); quit {
 			return nil
-		case Help:
-			printHelp(out)
-		case Submit:
-			execSubmit(ctx, c, symbol, cmd, out)
-		case Cancel:
-			execCancel(ctx, c, symbol, cmd, out)
-		case Book:
-			execBook(ctx, c, symbol, cmd, out)
-		case Watch:
-			execWatch(ctx, c, symbol, out)
 		}
 	}
+}
+
+// Exec executes a single parsed command against c, writing results to out.
+// It reports whether cmd was Quit, so callers looping over multiple commands know to stop.
+func Exec(ctx context.Context, c *client.Client, symbol string, cmd Command, out io.Writer) bool {
+	switch cmd.Kind {
+	case Quit:
+		return true
+	case Help:
+		PrintHelp(out)
+	case Submit:
+		execSubmit(ctx, c, symbol, cmd, out)
+	case Cancel:
+		execCancel(ctx, c, symbol, cmd, out)
+	case Book:
+		execBook(ctx, c, symbol, cmd, out)
+	case Watch:
+		execWatch(ctx, c, symbol, out)
+	}
+	return false
 }
 
 func execSubmit(ctx context.Context, c *client.Client, symbol string, cmd Command, out io.Writer) {

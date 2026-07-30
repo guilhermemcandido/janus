@@ -37,7 +37,8 @@ func printBook(out io.Writer, book *client.BookSnapshot) {
 	}
 }
 
-func printHelp(out io.Writer) {
+// PrintHelp writes the command grammar to out.
+func PrintHelp(out io.Writer) {
 	fmt.Fprintln(out, `Commands:
   buy <qty> @ <price>     submit a limit buy order
   sell <qty> @ <price>    submit a limit sell order
