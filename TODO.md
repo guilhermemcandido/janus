@@ -18,11 +18,10 @@ Ongoing and planned work for Janus. See [README.md](README.md) for the project p
 
 ## In progress / next up
 
-Nothing currently in flight.
+- **Web UI.** Backend is done and tested: `internal/websocket` (hand-rolled RFC 6455 - handshake, framing, masking, ping/pong, fragmentation, all unit-tested) and `internal/web` (bridges browser JSON messages to `pkg/client`, the same library the CLI and bots use). `cmd/web` is a working binary, verified live against the real compiled server with a raw client. Found and fixed a real bug this way: a self-triggered fill was delivered twice (once as the submit's own result, once via the live subscription broadcast) — fixed by embedding trades in the `ack` rather than re-broadcasting them. Still open: the actual frontend (HTML/CSS/JS, embedded via `embed.FS`).
 
 ## Planned
 
-- **Web UI.** A single hand-rolled WebSocket (RFC 6455, over HTTP/1.1) carrying both order commands and live pushes from the browser — one connection, since a resting order's eventual fill is inherently asynchronous and needs per-connection routing regardless of how the order was placed. Comes after the reliability work above, once there's real multi-bot activity worth visualizing.
 - **Performance pass.** Benchmarks exist for `Submit` (direct, and through `Engine`'s channel); still open: broader coverage (`Cancel`, multi-symbol `Exchange`, gRPC round-trip), a tick-array price index (replacing the sorted-slice-plus-binary-search index), and object pooling to reduce GC pressure under sustained load.
 
 ## Later — separate projects, sequenced one at a time

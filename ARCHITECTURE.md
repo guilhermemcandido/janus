@@ -11,6 +11,7 @@ Design decisions, trade-offs, and diagrams for Janus. For what the project is an
 - [Trade subscription and reconnection](#trade-subscription-and-reconnection)
 - [Go client library (`pkg/client`)](#go-client-library-pkgclient)
 - [CLI (`cmd/cli`)](#cli-cmdcli)
+- [WebSocket bridge (`cmd/web`)](#websocket-bridge-cmdweb)
 - [Bots](#bots)
 - [Domain concepts](#domain-concepts)
 - [Package layout](#package-layout)
@@ -219,6 +220,39 @@ The first real consumer of `pkg/client` — a REPL, script-file runner, and one-
 
 **`watch` only stops on an OS signal (`Ctrl+C`)**, scoped via `signal.NotifyContext` to just that one command, so it drops back to the prompt rather than killing the whole session.
 
+## WebSocket bridge (`cmd/web`)
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant WS as internal/websocket
+    participant Bridge as internal/web
+    participant Client as pkg/client
+    participant Server as Exchange
+
+    Browser->>WS: HTTP Upgrade (RFC 6455 handshake)
+    WS-->>Browser: 101 Switching Protocols
+    Browser->>WS: {"type":"subscribe","symbol":"AAPL"}
+    WS->>Bridge: ReadMessage() - text frame
+    Bridge->>Client: SubscribeTrades(symbol) + GetOrderBook(symbol)
+    Bridge-->>Browser: {"type":"book", ...}
+    Browser->>WS: {"type":"submit", side:"buy", ...}
+    Bridge->>Client: SubmitOrder(...)
+    Client->>Server: gRPC SubmitOrder
+    Server-->>Client: order, trades
+    Bridge-->>Browser: {"type":"ack","trades":[...]}
+    Client-->>Bridge: same trade, via the SubscribeTrades channel
+    Bridge-->>Browser: {"type":"trade","trades":[...]}
+```
+
+**`internal/websocket` is a hand-rolled RFC 6455 implementation, not a library** — understanding the protocol is part of what this project demonstrates. It has zero knowledge of Janus: just the handshake (`Sec-WebSocket-Accept`), frame encode/decode, masking, ping/pong, and fragmentation, kept as a sibling package rather than nested under `internal/web` since nothing about it is web-specific.
+
+**`internal/web` is the layer that knows about Janus.** It translates a small JSON schema (`submit`/`cancel`/`subscribe`/`unsubscribe` from the browser; `ack`/`trade`/`book`/`error` back) into `pkg/client` calls — the same library the CLI and every bot already use, so the browser is architecturally just another consumer, never touching the engine directly.
+
+**A submit's own trades are embedded in its `ack`, never re-broadcast as a `trade` message.** Found live, not by a test: a connection that submits an order while also subscribed to that symbol would otherwise see the same fill twice - once as the submit's own result, once via the subscription feed. Keeping "what happened to my order" (`ack.trades`) and "the live market tape" (`trade` broadcasts) as separate concerns fixes it structurally rather than by deduplicating after the fact.
+
+`cmd/web` is a separate binary, like every bot - it dials the exchange over gRPC via `pkg/client`, with no special access. The frontend itself (the actual page a browser loads) is still pending; see [TODO.md](TODO.md).
+
 ## Bots
 
 Five independent programs, each a standalone `pkg/client` consumer, trading against each other and any human via the CLI to create organic price movement — this is what makes Janus a market instead of just an order book with an API in front of it.
@@ -344,6 +378,7 @@ flowchart LR
 cmd/
     server/                    gRPC server entrypoint
     cli/                       CLI entrypoint
+    web/                       web UI entrypoint (frontend page still pending)
     bots/strategies/
         spot/, futures/,
         hedger/, noise/,
@@ -353,6 +388,9 @@ internal/
     engine/                    OrderBook, BookSide, PriceLevel, Engine, Exchange
     api/                       gRPC server implementation
         proto/                 generated code (never hand-edited)
+    persistence/               snapshot save/load/restore, background save loop
+    websocket/                 hand-rolled RFC 6455 transport (no Janus knowledge)
+    web/                       browser JSON <-> pkg/client bridge
     cli/                       parse/run/format for the CLI
     bots/                      shared bot infrastructure: Quoter/PriceSource, Trader/Strategy
         strategies/

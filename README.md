@@ -48,12 +48,13 @@ make run-cli   ARGS="AAPL"          # interactive session: buy/sell/book/cancel
 - **Go client library (`pkg/client`)** — the public, importable foundation every consumer (CLI, bots) is built on, with automatic reconnection for the trade feed.
 - **CLI (`cmd/cli`)** — interactive REPL, script-file replay, and one-shot commands.
 - **Five bots** — two market makers (spot, futures), a hedger, a noise trader, and an arbitrage bot, all sharing one runner/strategy pattern. See [ARCHITECTURE.md](ARCHITECTURE.md#bots) for what each one actually does.
+- **Browser bridge (`cmd/web`)** — a hand-rolled WebSocket server (`internal/websocket`) and a JSON-to-`pkg/client` bridge (`internal/web`), tested and working end to end. The actual frontend page is still pending; see [TODO.md](TODO.md).
 
 ## Project layout
 
 ```
-cmd/            binaries: server, cli, and one entrypoint per bot
-internal/       engine, gRPC server, persistence, CLI, and bot implementations (not importable outside this module)
+cmd/            binaries: server, cli, web UI, and one entrypoint per bot
+internal/       engine, gRPC server, persistence, WebSocket/web bridge, CLI, and bots (not importable outside this module)
 pkg/client/     the public Go client library
 proto/          janus.proto - the gRPC service definition, source of truth
 ```
