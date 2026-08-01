@@ -6,6 +6,18 @@ import (
 	"github.com/guilhermemcandido/janus/internal/types"
 )
 
+// currentRemaining looks up order's live Remaining if it may have rested (see OrderBook.rest),
+// since the caller's own pointer goes stale the moment a later Submit matches against it.
+func currentRemaining(lookup func(uint64) (*types.Order, bool), order *types.Order) uint64 {
+	if order.Type != types.Limit || order.Remaining == 0 {
+		return order.Remaining
+	}
+	if current, ok := lookup(order.ID); ok {
+		return current.Remaining
+	}
+	return 0
+}
+
 func newOrder(side types.Side, typ types.OrderType, price int64, qty uint64) *types.Order {
 	return types.NewOrder("TEST", side, typ, price, qty)
 }
@@ -120,14 +132,15 @@ func TestSubmit_PartialFillLeavesMakerResting(t *testing.T) {
 	if len(trades) != 1 || trades[0].Quantity != 40 {
 		t.Fatalf("trades = %+v, want one trade of qty 40", trades)
 	}
-	if sell.Remaining != 60 {
-		t.Fatalf("maker Remaining = %d, want 60", sell.Remaining)
-	}
 	if ob.BestAsk() == nil {
 		t.Fatalf("expected maker to still be resting with quantity left")
 	}
-	if _, ok := ob.Order(sell.ID); !ok {
+	resting, ok := ob.Order(sell.ID)
+	if !ok {
 		t.Fatalf("partially filled maker should remain in Orders")
+	}
+	if resting.Remaining != 60 {
+		t.Fatalf("maker Remaining = %d, want 60", resting.Remaining)
 	}
 }
 
@@ -173,8 +186,12 @@ func TestSubmit_SweepsMultipleMakersAtSamePriceLevel(t *testing.T) {
 	if trades[2].MakerOrderID != third.ID || trades[2].Quantity != 10 {
 		t.Fatalf("third trade = %+v, want maker %d qty 10 (partial)", trades[2], third.ID)
 	}
-	if third.Remaining != 40 {
-		t.Fatalf("order 3 Remaining = %d, want 40 (partially filled, still resting)", third.Remaining)
+	restingThird, ok := ob.Order(third.ID)
+	if !ok {
+		t.Fatalf("expected order 3 to still be resting")
+	}
+	if restingThird.Remaining != 40 {
+		t.Fatalf("order 3 Remaining = %d, want 40 (partially filled, still resting)", restingThird.Remaining)
 	}
 	if buy.Remaining != 0 {
 		t.Fatalf("taker Remaining = %d, want 0", buy.Remaining)

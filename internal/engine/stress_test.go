@@ -20,6 +20,7 @@ func TestEngine_ConcurrentSubmitAndCancelStress(t *testing.T) {
 	var mu sync.Mutex
 	var allOrders []*types.Order
 	filled := make(map[uint64]uint64)
+	cancelled := make(map[uint64]uint64) // orderID -> Remaining as of cancellation
 
 	var wg sync.WaitGroup
 	for g := 0; g < goroutines; g++ {
@@ -37,8 +38,15 @@ func TestEngine_ConcurrentSubmitAndCancelStress(t *testing.T) {
 					mu.Unlock()
 
 					if target != nil {
-						if _, err := e.Cancel(target.ID); err != nil && err != ErrOrderNotFound {
-							t.Errorf("Cancel returned unexpected error: %v", err)
+						cancelledOrder, err := e.Cancel(target.ID)
+						if err != nil {
+							if err != ErrOrderNotFound {
+								t.Errorf("Cancel returned unexpected error: %v", err)
+							}
+						} else {
+							mu.Lock()
+							cancelled[cancelledOrder.ID] = cancelledOrder.Remaining
+							mu.Unlock()
 						}
 					}
 					continue
@@ -65,8 +73,12 @@ func TestEngine_ConcurrentSubmitAndCancelStress(t *testing.T) {
 
 	for _, order := range allOrders {
 		want := order.Quantity - filled[order.ID]
-		if order.Remaining != want {
-			t.Fatalf("order %d: Remaining = %d, want %d (Quantity %d minus %d filled)", order.ID, order.Remaining, want, order.Quantity, filled[order.ID])
+		got, wasCancelled := cancelled[order.ID]
+		if !wasCancelled {
+			got = currentRemaining(e.Order, order)
+		}
+		if got != want {
+			t.Fatalf("order %d: Remaining = %d, want %d (Quantity %d minus %d filled)", order.ID, got, want, order.Quantity, filled[order.ID])
 		}
 	}
 }
@@ -117,10 +129,12 @@ func TestExchange_ConcurrentMultiSymbolStress(t *testing.T) {
 	wg.Wait()
 
 	for _, symbol := range symbols {
+		eng := ex.GetOrCreateEngine(symbol)
 		for _, order := range orders[symbol] {
 			want := order.Quantity - filled[symbol][order.ID]
-			if order.Remaining != want {
-				t.Fatalf("[%s] order %d: Remaining = %d, want %d", symbol, order.ID, order.Remaining, want)
+			got := currentRemaining(eng.Order, order)
+			if got != want {
+				t.Fatalf("[%s] order %d: Remaining = %d, want %d", symbol, order.ID, got, want)
 			}
 		}
 	}

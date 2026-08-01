@@ -69,10 +69,12 @@ func (ob *OrderBook) matchLevel(taker *types.Order, level *PriceLevel) []types.T
 	return trades
 }
 
-// rest adds order to its own side of the book, tracked by both the price level and the order index.
+// rest stores a copy of order in the book: the caller keeps its own pointer after Submit returns,
+// and a later match against the resting order (from an unrelated future Submit) must not race that.
 func (ob *OrderBook) rest(order *types.Order) {
-	ob.sideFor(order.Side).GetOrCreateLevel(order.Price).Add(order)
-	ob.orders[order.ID] = order
+	resting := *order
+	ob.sideFor(order.Side).GetOrCreateLevel(order.Price).Add(&resting)
+	ob.orders[order.ID] = &resting
 }
 
 // sideFor returns the side an order rests on.

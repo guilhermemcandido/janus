@@ -42,8 +42,9 @@ func TestProperty_QuantityConservationAcrossRandomOrders(t *testing.T) {
 
 	for _, order := range submitted {
 		want := order.Quantity - filled[order.ID]
-		if order.Remaining != want {
-			t.Fatalf("order %d: Remaining = %d, want %d (Quantity %d minus %d filled)", order.ID, order.Remaining, want, order.Quantity, filled[order.ID])
+		got := currentRemaining(ob.Order, order)
+		if got != want {
+			t.Fatalf("order %d: Remaining = %d, want %d (Quantity %d minus %d filled)", order.ID, got, want, order.Quantity, filled[order.ID])
 		}
 	}
 }

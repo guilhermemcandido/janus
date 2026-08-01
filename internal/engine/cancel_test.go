@@ -16,8 +16,8 @@ func TestCancel_RemovesRestingOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Cancel returned unexpected error: %v", err)
 	}
-	if cancelled != order {
-		t.Fatalf("Cancel returned a different order than the one submitted")
+	if *cancelled != *order {
+		t.Fatalf("cancelled = %+v, want %+v", *cancelled, *order)
 	}
 	if _, ok := ob.Order(order.ID); ok {
 		t.Fatalf("cancelled order should no longer be tracked in Orders")
