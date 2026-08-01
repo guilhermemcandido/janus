@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -33,6 +34,9 @@ func (s *Server) SubmitOrder(ctx context.Context, req *pb.SubmitOrderRequest) (*
 	trades, err := eng.Submit(order)
 	if err != nil {
 		return nil, toStatus(err)
+	}
+	for _, tr := range trades {
+		log.Printf("trade: %s %d @ %d (maker %d, taker %d)", req.Symbol, tr.Quantity, tr.Price, tr.MakerOrderID, tr.TakerOrderID)
 	}
 
 	return &pb.SubmitOrderResponse{
