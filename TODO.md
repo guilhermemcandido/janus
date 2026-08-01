@@ -12,10 +12,10 @@ Ongoing and planned work for Janus. See [README.md](README.md) for the project p
 - **Bots** — `spot` and `futures` market makers, `hedger`, `noise` trader, `arbitrage` bot, all sharing one `Trader`/`Strategy` runner.
 - **Reliability hardening** — negative-depth panic fixed at all three layers (engine/API/CLI), server graceful shutdown, `Quoter` no longer loses track of an order on a transient cancel error, bounded shutdown timeout on bot cleanup.
 - **Tooling** — `Makefile` (`make help` for the full list): build, test, vet, fmt, proto regen, and quiet `run-*` targets for every binary.
+- **Bots detect an exchange restart and reset local state.** `Trader` pings the exchange every cycle and, on a detected epoch change, calls `Reset` on any strategy that implements it. `Quoter`, `Hedger`, and `Arbitrage` all implement it, dropping resting order IDs / net position instead of acting on stale assumptions. Verified live (kill/restart the server mid-session).
 
 ## In progress / next up
 
-- **Bots detect an exchange restart and reset local state.** `Quoter`, `Hedger`, and `Arbitrage` all hold state (resting order IDs, net position) that becomes meaningless if the exchange restarts mid-session and loses everything. Wire up the `Ping`/`Epoch` mechanism (already built) so each bot notices a restart and resets, instead of acting on stale assumptions.
 - **Stress test: concurrent bot reconnections.** Spin up several client connections, kill and restart the server mid-flight, assert every client recovers and the book ends up consistent — proving the reconnection story under real concurrent load, not just a single client.
 
 ## Planned

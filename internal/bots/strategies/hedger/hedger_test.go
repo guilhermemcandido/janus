@@ -106,6 +106,33 @@ func TestHedger_HedgeIfNeededFlattensPosition(t *testing.T) {
 	}
 }
 
+func TestHedger_ActFailedTracksSubmitError(t *testing.T) {
+	c := newTestClient(t)
+	h := New(c, testConfig())
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := h.Act(cancelledCtx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+
+	if !h.ActFailed() {
+		t.Fatalf("ActFailed() = false after a cancelled-context submit, want true")
+	}
+}
+
+func TestHedger_ResetClearsPosition(t *testing.T) {
+	c := newTestClient(t)
+	h := New(c, testConfig())
+	h.position = 15
+
+	h.Reset(context.Background(), &bytes.Buffer{})
+
+	if h.position != 0 {
+		t.Fatalf("position = %d after Reset, want 0", h.position)
+	}
+}
+
 func TestHedger_HedgeIfNeededFlattensShortPosition(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()

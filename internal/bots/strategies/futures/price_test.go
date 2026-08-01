@@ -121,7 +121,7 @@ func TestSpotMidPriceSource_StaysAtLastGoodPriceOnGap(t *testing.T) {
 		t.Fatalf("Price = %d, want 105 (mid 100 + basis 5)", price)
 	}
 
-	// Simulate a momentary gap in the spot book, e.g. the spot bot mid-requote.
+	// Simulate a momentary gap in the spot book, like the spot bot mid-requote.
 	if _, err := c.CancelOrder(ctx, "AAPL", askResp.ID); err != nil {
 		t.Fatalf("CancelOrder returned error: %v", err)
 	}

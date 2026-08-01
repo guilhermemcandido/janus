@@ -143,6 +143,48 @@ func TestArbitrage_ExitsOncePositionRevertsHalfway(t *testing.T) {
 	}
 }
 
+func TestArbitrage_ActFailedTracksBookRPCError(t *testing.T) {
+	c := newTestClient(t)
+	a := New(c, testConfig())
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := a.Act(cancelledCtx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+
+	if !a.ActFailed() {
+		t.Fatalf("ActFailed() = false after a cancelled-context book fetch, want true")
+	}
+}
+
+func TestArbitrage_ActNotFailedWhenBookMerelyIncomplete(t *testing.T) {
+	c := newTestClient(t)
+	seedBook(t, c, "AAPL", 99, 101)
+	// AAPLF has no resting orders, so mid() returns ok=false with no RPC error.
+
+	a := New(c, testConfig())
+	if err := a.Act(context.Background(), &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+
+	if a.ActFailed() {
+		t.Fatalf("ActFailed() = true for a merely-incomplete book, want false (no RPC error occurred)")
+	}
+}
+
+func TestArbitrage_ResetClearsPosition(t *testing.T) {
+	c := newTestClient(t)
+	a := New(c, testConfig())
+	a.inPosition, a.long = true, true
+
+	a.Reset(context.Background(), &bytes.Buffer{})
+
+	if a.inPosition {
+		t.Fatalf("inPosition = true after Reset, want false")
+	}
+}
+
 func TestArbitrage_SkipsWhenBookIncomplete(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()

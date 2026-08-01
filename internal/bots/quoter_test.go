@@ -182,6 +182,44 @@ func TestQuoter_ActSkipsResubmitWhenCancelFails(t *testing.T) {
 	}
 }
 
+func TestQuoter_ActFailedTracksCancelError(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	q := NewQuoter(c, testConfig(), fixedPriceSource{100})
+
+	if err := q.Act(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+	if q.ActFailed() {
+		t.Fatalf("ActFailed() = true after a clean cycle, want false")
+	}
+
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := q.Act(cancelledCtx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+	if !q.ActFailed() {
+		t.Fatalf("ActFailed() = false after a cancel error, want true")
+	}
+}
+
+func TestQuoter_ResetClearsOrderIDs(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	q := NewQuoter(c, testConfig(), fixedPriceSource{100})
+
+	if err := q.Act(ctx, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Act returned error: %v", err)
+	}
+
+	q.Reset(ctx, &bytes.Buffer{})
+
+	if q.bidID != 0 || q.askID != 0 {
+		t.Fatalf("bidID=%d askID=%d after Reset, want both 0", q.bidID, q.askID)
+	}
+}
+
 func TestQuoter_CloseCancelsRestingQuotes(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()

@@ -15,6 +15,8 @@ type Hedger struct {
 	c        *client.Client
 	cfg      Config
 	position int64
+
+	lastFailed bool
 }
 
 // New creates a Hedger for cfg, trading through c.
@@ -24,6 +26,7 @@ func New(c *client.Client, cfg Config) *Hedger {
 
 // Act implements bots.Strategy.
 func (h *Hedger) Act(ctx context.Context, out io.Writer) error {
+	h.lastFailed = false
 	h.takeFlow(ctx, out)
 	h.hedgeIfNeeded(ctx, out)
 	return nil
@@ -38,6 +41,7 @@ func (h *Hedger) takeFlow(ctx context.Context, out io.Writer) {
 	order, _, err := h.c.SubmitOrder(ctx, h.cfg.FuturesSymbol, side, client.Market, 0, h.cfg.FlowQuantity)
 	if err != nil {
 		fmt.Fprintln(out, "error taking flow position:", err)
+		h.lastFailed = true
 		return
 	}
 	filled := h.cfg.FlowQuantity - order.Remaining
@@ -65,6 +69,7 @@ func (h *Hedger) hedge(ctx context.Context, out io.Writer, side client.Side, qty
 	order, _, err := h.c.SubmitOrder(ctx, h.cfg.SpotSymbol, side, client.Market, 0, qty)
 	if err != nil {
 		fmt.Fprintln(out, "error hedging:", err)
+		h.lastFailed = true
 		return
 	}
 	filled := qty - order.Remaining
@@ -78,6 +83,15 @@ func (h *Hedger) hedge(ctx context.Context, out io.Writer, side client.Side, qty
 	}
 	fmt.Fprintf(out, "hedge: %s %d %s (net position %d)\n", sideName(side), filled, h.cfg.SpotSymbol, h.position)
 }
+
+// Reset implements bots.Resetter: a restarted exchange holds no fills, so the tracked position is stale.
+func (h *Hedger) Reset(ctx context.Context, out io.Writer) {
+	h.position = 0
+	fmt.Fprintln(out, "detected exchange restart, resetting hedger position")
+}
+
+// ActFailed implements bots.FailureReporter.
+func (h *Hedger) ActFailed() bool { return h.lastFailed }
 
 func sideName(s client.Side) string {
 	if s == client.Sell {

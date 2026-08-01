@@ -72,7 +72,7 @@ func main() {
 	defer stop()
 
 	source := spot.NewRandomWalk(*initialPrice, *walkStep)
-	trader := bots.NewTrader(bots.NewQuoter(c, cfg, source), cfg.Interval)
+	trader := bots.NewTrader(bots.NewQuoter(c, cfg, source), cfg.Interval, c)
 	if err := trader.Run(ctx, os.Stdout); err != nil {
 		log.Fatal(err)
 	}

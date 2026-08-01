@@ -25,6 +25,8 @@ type Quoter struct {
 
 	bidID uint64
 	askID uint64
+
+	lastFailed bool
 }
 
 // NewQuoter creates a Quoter that quotes cfg.Symbol using source for its reference price.
@@ -37,9 +39,12 @@ func NewQuoter(c *client.Client, cfg Config, source PriceSource) *Quoter {
 // resubmitted if its old quote was actually cancelled (or already gone) - otherwise its state is
 // unknown and resubmitting would risk stacking a duplicate quote on top of it.
 func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
+	q.lastFailed = false
+
 	ref, err := q.source.Price(ctx)
 	if err != nil {
 		fmt.Fprintln(out, "error getting reference price:", err)
+		q.lastFailed = true
 		return nil
 	}
 
@@ -53,18 +58,24 @@ func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 		bid, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Buy, client.Limit, bidPrice, q.cfg.Quantity)
 		if err != nil {
 			fmt.Fprintln(out, "error submitting bid:", err)
+			q.lastFailed = true
 		} else {
 			q.bidID, bidTrades, submittedBid = bid.ID, trades, true
 		}
+	} else {
+		q.lastFailed = true
 	}
 
 	if q.cancelIfResting(ctx, &q.askID, out) {
 		ask, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Sell, client.Limit, askPrice, q.cfg.Quantity)
 		if err != nil {
 			fmt.Fprintln(out, "error submitting ask:", err)
+			q.lastFailed = true
 		} else {
 			q.askID, askTrades, submittedAsk = ask.ID, trades, true
 		}
+	} else {
+		q.lastFailed = true
 	}
 
 	if submittedBid || submittedAsk {
@@ -84,6 +95,15 @@ func (q *Quoter) Close(ctx context.Context, out io.Writer) {
 	q.cancelIfResting(ctx, &q.bidID, out)
 	q.cancelIfResting(ctx, &q.askID, out)
 }
+
+// Reset implements bots.Resetter: a restarted exchange no longer has these orders, so cancelling them is pointless.
+func (q *Quoter) Reset(ctx context.Context, out io.Writer) {
+	q.bidID, q.askID = 0, 0
+	fmt.Fprintln(out, "detected exchange restart, resetting quoter state")
+}
+
+// ActFailed implements bots.FailureReporter.
+func (q *Quoter) ActFailed() bool { return q.lastFailed }
 
 // cancelIfResting cancels the resting order at *id, if any, tolerating ones already filled.
 // Returns whether it's now safe to submit a replacement: false only when a real cancel error

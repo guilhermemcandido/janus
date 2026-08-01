@@ -57,7 +57,7 @@ Flags:
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	trader := bots.NewTrader(hedger.New(c, cfg), cfg.Interval)
+	trader := bots.NewTrader(hedger.New(c, cfg), cfg.Interval, c)
 	if err := trader.Run(ctx, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
