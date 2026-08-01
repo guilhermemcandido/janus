@@ -31,7 +31,7 @@ func (n *Noise) Act(ctx context.Context, out io.Writer) error {
 
 	order, trades, err := n.c.SubmitOrder(ctx, symbol, side, client.Market, 0, n.cfg.Quantity)
 	if err != nil {
-		fmt.Fprintln(out, "error submitting noise trade:", err)
+		fmt.Fprintln(out, "error submitting noise trade:", client.FriendlyError(err))
 		return nil
 	}
 	filled := n.cfg.Quantity - order.Remaining

@@ -43,7 +43,7 @@ func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 
 	ref, err := q.source.Price(ctx)
 	if err != nil {
-		fmt.Fprintln(out, "error getting reference price:", err)
+		fmt.Fprintln(out, "error getting reference price:", client.FriendlyError(err))
 		q.lastFailed = true
 		return nil
 	}
@@ -57,7 +57,7 @@ func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 	if q.cancelIfResting(ctx, &q.bidID, out) {
 		bid, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Buy, client.Limit, bidPrice, q.cfg.Quantity)
 		if err != nil {
-			fmt.Fprintln(out, "error submitting bid:", err)
+			fmt.Fprintln(out, "error submitting bid:", client.FriendlyError(err))
 			q.lastFailed = true
 		} else {
 			q.bidID, bidTrades, submittedBid = bid.ID, trades, true
@@ -69,7 +69,7 @@ func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 	if q.cancelIfResting(ctx, &q.askID, out) {
 		ask, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Sell, client.Limit, askPrice, q.cfg.Quantity)
 		if err != nil {
-			fmt.Fprintln(out, "error submitting ask:", err)
+			fmt.Fprintln(out, "error submitting ask:", client.FriendlyError(err))
 			q.lastFailed = true
 		} else {
 			q.askID, askTrades, submittedAsk = ask.ID, trades, true
@@ -113,7 +113,7 @@ func (q *Quoter) cancelIfResting(ctx context.Context, id *uint64, out io.Writer)
 		return true
 	}
 	if _, err := q.c.CancelOrder(ctx, q.cfg.Symbol, *id); err != nil && status.Code(err) != codes.NotFound {
-		fmt.Fprintln(out, "error cancelling order", *id, ":", err)
+		fmt.Fprintln(out, "error cancelling order", *id, ":", client.FriendlyError(err))
 		return false
 	}
 	*id = 0

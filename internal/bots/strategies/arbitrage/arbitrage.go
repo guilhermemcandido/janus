@@ -87,11 +87,11 @@ func (a *Arbitrage) ActFailed() bool { return a.lastFailed }
 // trade submits the futures leg at futuresSide and the spot leg at spotSide, same quantity each.
 func (a *Arbitrage) trade(ctx context.Context, out io.Writer, futuresSide, spotSide client.Side) {
 	if _, _, err := a.c.SubmitOrder(ctx, a.cfg.FuturesSymbol, futuresSide, client.Market, 0, a.cfg.Quantity); err != nil {
-		fmt.Fprintln(out, "error submitting futures leg:", err)
+		fmt.Fprintln(out, "error submitting futures leg:", client.FriendlyError(err))
 		a.lastFailed = true
 	}
 	if _, _, err := a.c.SubmitOrder(ctx, a.cfg.SpotSymbol, spotSide, client.Market, 0, a.cfg.Quantity); err != nil {
-		fmt.Fprintln(out, "error submitting spot leg:", err)
+		fmt.Fprintln(out, "error submitting spot leg:", client.FriendlyError(err))
 		a.lastFailed = true
 	}
 }

@@ -40,7 +40,7 @@ func (h *Hedger) takeFlow(ctx context.Context, out io.Writer) {
 
 	order, _, err := h.c.SubmitOrder(ctx, h.cfg.FuturesSymbol, side, client.Market, 0, h.cfg.FlowQuantity)
 	if err != nil {
-		fmt.Fprintln(out, "error taking flow position:", err)
+		fmt.Fprintln(out, "error taking flow position:", client.FriendlyError(err))
 		h.lastFailed = true
 		return
 	}
@@ -68,7 +68,7 @@ func (h *Hedger) hedgeIfNeeded(ctx context.Context, out io.Writer) {
 func (h *Hedger) hedge(ctx context.Context, out io.Writer, side client.Side, qty uint64) {
 	order, _, err := h.c.SubmitOrder(ctx, h.cfg.SpotSymbol, side, client.Market, 0, qty)
 	if err != nil {
-		fmt.Fprintln(out, "error hedging:", err)
+		fmt.Fprintln(out, "error hedging:", client.FriendlyError(err))
 		h.lastFailed = true
 		return
 	}
