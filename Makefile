@@ -1,7 +1,8 @@
-.PHONY: help build test test-race vet fmt fmt-check check proto tools clean \
+.PHONY: help build test test-race vet fmt fmt-check check proto tools clean clean-state \
 	run-server run-cli run-watch run-spot run-futures run-hedger run-noise run-arbitrage
 
 BIN_DIR := bin
+DATA_DIR := data
 GOBIN := $(shell go env GOPATH)/bin
 BOTS := spot futures hedger noise arbitrage
 
@@ -45,6 +46,9 @@ proto: ## Regenerate protobuf/gRPC code from proto/janus.proto
 
 clean: ## Remove built binaries
 	@rm -rf $(BIN_DIR)
+
+clean-state: ## Remove the persisted exchange snapshot, so the next run-server starts fresh
+	@rm -rf $(DATA_DIR)
 
 ##@ Run (pass flags/symbols with ARGS="...", e.g. make run-spot ARGS="AAPL")
 
