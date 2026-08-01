@@ -42,3 +42,19 @@ func (ob *OrderBook) Depth(n int) types.BookSnapshot {
 		Asks:   ob.asks.Depth(n),
 	}
 }
+
+// RestingOrders returns every currently resting order, best price first and FIFO within each level, plus the sequence counter.
+func (ob *OrderBook) RestingOrders() (bids, asks []types.Order, seq uint64) {
+	return ob.bids.Orders(), ob.asks.Orders(), ob.seq
+}
+
+// Restore re-rests every order in bids and asks, in order, and sets the sequence counter.
+func (ob *OrderBook) Restore(bids, asks []types.Order, seq uint64) {
+	for i := range bids {
+		ob.rest(&bids[i])
+	}
+	for i := range asks {
+		ob.rest(&asks[i])
+	}
+	ob.seq = seq
+}

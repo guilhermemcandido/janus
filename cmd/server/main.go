@@ -18,6 +18,7 @@ import (
 	"github.com/guilhermemcandido/janus/internal/api"
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
 	"github.com/guilhermemcandido/janus/internal/engine"
+	"github.com/guilhermemcandido/janus/internal/persistence"
 )
 
 // shutdownGracePeriod bounds GracefulStop, which otherwise waits forever on a long-lived stream like SubscribeTrades.
@@ -25,6 +26,8 @@ const shutdownGracePeriod = 5 * time.Second
 
 func main() {
 	addr := flag.String("addr", ":50051", "listen address")
+	snapshotPath := flag.String("snapshot", "data/exchange.snapshot.json", "path to the persisted book snapshot")
+	snapshotInterval := flag.Duration("snapshot-interval", 30*time.Second, "how often to save a snapshot")
 	flag.Parse()
 
 	lis, err := net.Listen("tcp", *addr)
@@ -34,6 +37,21 @@ func main() {
 
 	exchange := engine.NewExchange()
 	defer exchange.Close()
+
+	snap, err := persistence.Load(*snapshotPath)
+	if err != nil {
+		log.Fatalf("load snapshot: %v", err)
+	}
+	if snap == nil {
+		log.Printf("no snapshot found at %s, starting fresh", *snapshotPath)
+	} else {
+		var orders int
+		for _, book := range snap.Books {
+			orders += len(book.Bids) + len(book.Asks)
+		}
+		log.Printf("restoring %d symbols (%d resting orders) from snapshot %s", len(snap.Books), orders, *snapshotPath)
+	}
+	persistence.Restore(exchange, snap)
 
 	// MinTime must stay below the client's keepalive Time (pkg/client.Dial, 5s), or the server GOAWAYs it for pinging too often.
 	grpcServer := grpc.NewServer(grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
@@ -49,7 +67,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	go persistence.RunLoop(ctx, exchange, *snapshotPath, *snapshotInterval)
+
+	// Serve returns as soon as GracefulStop/Stop completes, racing this goroutine's own final
+	// SafeSave - shutdownDone lets main block until the snapshot has actually been written.
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		log.Println("shutting down...")
 		stopped := make(chan struct{})
@@ -63,10 +87,12 @@ func main() {
 			log.Println("graceful stop timed out, forcing shutdown")
 			grpcServer.Stop()
 		}
+		persistence.SafeSave(exchange, *snapshotPath)
 	}()
 
 	log.Printf("janus gRPC server listening on %s", *addr)
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("serve: %v", err)
 	}
+	<-shutdownDone
 }

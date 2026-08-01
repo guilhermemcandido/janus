@@ -32,6 +32,18 @@ func (e *Exchange) GetOrCreateEngine(symbol string) *Engine {
 	return eng
 }
 
+// Symbols returns every symbol with an active Engine.
+func (e *Exchange) Symbols() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	symbols := make([]string, 0, len(e.engines))
+	for s := range e.engines {
+		symbols = append(symbols, s)
+	}
+	return symbols
+}
+
 // Close stops every managed Engine's goroutine.
 func (e *Exchange) Close() {
 	e.mu.Lock()

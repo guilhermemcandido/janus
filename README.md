@@ -43,6 +43,7 @@ make run-cli   ARGS="AAPL"          # interactive session: buy/sell/book/cancel
 ## What's built
 
 - **Matching engine** — in-memory order book, price-time priority, limit and market orders, integer-tick pricing. Property-tested and benchmarked.
+- **Persistence** — every book's resting orders are snapshotted to disk periodically and on shutdown, and restored on startup, so a restart resumes rather than starts empty.
 - **gRPC API** — submit, cancel, book snapshots, a streaming trade feed, and a liveness/restart-detection check, all backed directly by the engine.
 - **Go client library (`pkg/client`)** — the public, importable foundation every consumer (CLI, bots) is built on, with automatic reconnection for the trade feed.
 - **CLI (`cmd/cli`)** — interactive REPL, script-file replay, and one-shot commands.
@@ -52,7 +53,7 @@ make run-cli   ARGS="AAPL"          # interactive session: buy/sell/book/cancel
 
 ```
 cmd/            binaries: server, cli, and one entrypoint per bot
-internal/       engine, gRPC server, CLI, and bot implementations (not importable outside this module)
+internal/       engine, gRPC server, persistence, CLI, and bot implementations (not importable outside this module)
 pkg/client/     the public Go client library
 proto/          janus.proto - the gRPC service definition, source of truth
 ```

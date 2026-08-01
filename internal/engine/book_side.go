@@ -76,6 +76,17 @@ func (bs *BookSide) IsEmpty() bool {
 	return len(bs.prices) == 0
 }
 
+// Orders returns every resting order on this side, best price first and FIFO within each level.
+func (bs *BookSide) Orders() []types.Order {
+	var out []types.Order
+	for _, price := range bs.prices {
+		for _, o := range bs.levels[price].Orders() {
+			out = append(out, *o)
+		}
+	}
+	return out
+}
+
 // Depth returns up to n price levels from best to worst, as an immutable snapshot.
 func (bs *BookSide) Depth(n int) []types.PriceLevelSnapshot {
 	if n < 0 {

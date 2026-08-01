@@ -71,6 +71,15 @@ func (pl *PriceLevel) IsEmpty() bool {
 	return pl.orders.Len() == 0
 }
 
+// Orders returns every order at this level, oldest first.
+func (pl *PriceLevel) Orders() []*types.Order {
+	out := make([]*types.Order, 0, pl.orders.Len())
+	for el := pl.orders.Front(); el != nil; el = el.Next() {
+		out = append(out, el.Value.(*types.Order))
+	}
+	return out
+}
+
 // TotalQuantity sums Remaining across every order resting at this level.
 func (pl *PriceLevel) TotalQuantity() uint64 {
 	var total uint64

@@ -63,6 +63,12 @@ func (e *Engine) handle(msg any) {
 	case unsubscribeCommand:
 		e.subs.remove(cmd.subID)
 		cmd.reply <- struct{}{}
+	case restingOrdersCommand:
+		bids, asks, seq := e.book.RestingOrders()
+		cmd.reply <- restingOrdersResult{bids: bids, asks: asks, seq: seq}
+	case restoreCommand:
+		e.book.Restore(cmd.bids, cmd.asks, cmd.seq)
+		cmd.reply <- struct{}{}
 	}
 }
 
