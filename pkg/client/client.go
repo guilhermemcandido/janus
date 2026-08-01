@@ -2,9 +2,11 @@ package client
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
 )
@@ -15,9 +17,16 @@ type Client struct {
 	stub pb.ExchangeClient
 }
 
-// Dial connects to a Janus exchange server at addr.
+// Dial connects to a Janus exchange server at addr, with keepalive pings to detect a dead connection.
 func Dial(addr string, opts ...grpc.DialOption) (*Client, error) {
-	opts = append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, opts...)
+	opts = append([]grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                5 * time.Second,
+			Timeout:             3 * time.Second,
+			PermitWithoutStream: true,
+		}),
+	}, opts...)
 	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, err
@@ -67,27 +76,11 @@ func (c *Client) GetOrderBook(ctx context.Context, symbol string, depth int) (*B
 	}, nil
 }
 
-// SubscribeTrades returns a channel of live trades for symbol; it closes once ctx is cancelled or the server ends the stream.
-func (c *Client) SubscribeTrades(ctx context.Context, symbol string) (<-chan Trade, error) {
-	stream, err := c.stub.SubscribeTrades(ctx, &pb.SubscribeTradesRequest{Symbol: symbol})
+// Ping is a lightweight liveness check. Its epoch changes if the exchange process has restarted.
+func (c *Client) Ping(ctx context.Context) (epoch uint64, err error) {
+	resp, err := c.stub.Ping(ctx, &pb.PingRequest{})
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-
-	out := make(chan Trade)
-	go func() {
-		defer close(out)
-		for {
-			tr, err := stream.Recv()
-			if err != nil {
-				return
-			}
-			select {
-			case out <- tradeFromProto(tr):
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return out, nil
+	return resp.Epoch, nil
 }

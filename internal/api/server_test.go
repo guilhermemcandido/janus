@@ -175,6 +175,18 @@ func TestServer_GetOrderBookRejectsNegativeDepth(t *testing.T) {
 	}
 }
 
+func TestServer_PingReturnsExchangeEpoch(t *testing.T) {
+	client := newTestClient(t)
+
+	resp, err := client.Ping(context.Background(), &pb.PingRequest{})
+	if err != nil {
+		t.Fatalf("Ping returned error: %v", err)
+	}
+	if resp.Epoch == 0 {
+		t.Fatalf("Epoch = 0, want a nonzero random value")
+	}
+}
+
 func TestServer_SubscribeTradesReceivesLiveTrades(t *testing.T) {
 	client := newTestClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -183,6 +195,11 @@ func TestServer_SubscribeTradesReceivesLiveTrades(t *testing.T) {
 	stream, err := client.SubscribeTrades(ctx, &pb.SubscribeTradesRequest{Symbol: "AAPL"})
 	if err != nil {
 		t.Fatalf("SubscribeTrades returned error: %v", err)
+	}
+	// Wait for the server to actually register with the engine before submitting, since the
+	// broadcast is non-blocking and would silently drop a trade sent before that.
+	if _, err := stream.Header(); err != nil {
+		t.Fatalf("stream.Header() returned error: %v", err)
 	}
 
 	if _, err := client.SubmitOrder(context.Background(), &pb.SubmitOrderRequest{

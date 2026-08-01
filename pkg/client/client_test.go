@@ -121,11 +121,41 @@ func TestClient_GetOrderBook(t *testing.T) {
 	}
 }
 
+func TestClient_PingReturnsEpoch(t *testing.T) {
+	c := newTestClient(t)
+
+	epoch, err := c.Ping(context.Background())
+	if err != nil {
+		t.Fatalf("Ping returned error: %v", err)
+	}
+	if epoch == 0 {
+		t.Fatalf("epoch = 0, want a nonzero random value")
+	}
+}
+
+func TestClient_PingEpochDiffersAcrossExchangeInstances(t *testing.T) {
+	c1 := newTestClient(t)
+	c2 := newTestClient(t)
+
+	epoch1, err := c1.Ping(context.Background())
+	if err != nil {
+		t.Fatalf("Ping (first exchange) returned error: %v", err)
+	}
+	epoch2, err := c2.Ping(context.Background())
+	if err != nil {
+		t.Fatalf("Ping (second exchange) returned error: %v", err)
+	}
+	if epoch1 == epoch2 {
+		t.Fatalf("epoch1 = epoch2 = %d, want different epochs for independent exchange instances", epoch1)
+	}
+}
+
 func TestClient_SubscribeTradesReceivesLiveTrades(t *testing.T) {
 	c := newTestClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// SubscribeTrades only returns once the server has confirmed registration, so no race here.
 	trades, err := c.SubscribeTrades(ctx, "AAPL")
 	if err != nil {
 		t.Fatalf("SubscribeTrades returned error: %v", err)
