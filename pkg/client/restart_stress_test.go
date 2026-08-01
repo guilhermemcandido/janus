@@ -91,7 +91,8 @@ func TestClient_ConcurrentClientsRecoverFromServerRestart(t *testing.T) {
 		}(i, c)
 	}
 
-	time.Sleep(500 * time.Millisecond) // let every client rack up some pre-restart round trips
+	// Let every client rack up some pre-restart round trips.
+	time.Sleep(500 * time.Millisecond)
 
 	srv1.Stop()
 	exchange1.Close()
@@ -108,7 +109,8 @@ func TestClient_ConcurrentClientsRecoverFromServerRestart(t *testing.T) {
 	defer exchange2.Close()
 	restarted.Store(true)
 
-	time.Sleep(2 * time.Second) // give every client time to hit Unavailable and reconnect on its own
+	// Give every client time to hit Unavailable and reconnect on its own.
+	time.Sleep(2 * time.Second)
 	close(stop)
 	wg.Wait()
 
@@ -122,7 +124,7 @@ func TestClient_ConcurrentClientsRecoverFromServerRestart(t *testing.T) {
 	}
 
 	// A retried leg whose earlier attempt actually succeeded on the discarded old exchange finds
-	// nothing to cross on the fresh one - an inherent ambiguous-outcome race, not a bug, capped at one stray order.
+	// nothing to cross on the fresh one - an inherent race, not a bug, capped at one stray order.
 	for i, c := range clients {
 		symbol := fmt.Sprintf("SYM%d", i)
 		book, err := c.GetOrderBook(context.Background(), symbol, 100)

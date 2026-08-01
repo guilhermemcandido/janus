@@ -6,8 +6,6 @@ import (
 	"github.com/guilhermemcandido/janus/internal/types"
 )
 
-// currentRemaining looks up order's live Remaining if it may have rested (see OrderBook.rest),
-// since the caller's own pointer goes stale the moment a later Submit matches against it.
 func currentRemaining(lookup func(uint64) (*types.Order, bool), order *types.Order) uint64 {
 	if order.Type != types.Limit || order.Remaining == 0 {
 		return order.Remaining

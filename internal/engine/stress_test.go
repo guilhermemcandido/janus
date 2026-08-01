@@ -20,7 +20,7 @@ func TestEngine_ConcurrentSubmitAndCancelStress(t *testing.T) {
 	var mu sync.Mutex
 	var allOrders []*types.Order
 	filled := make(map[uint64]uint64)
-	cancelled := make(map[uint64]uint64) // orderID -> Remaining as of cancellation
+	cancelled := make(map[uint64]uint64)
 
 	var wg sync.WaitGroup
 	for g := 0; g < goroutines; g++ {
