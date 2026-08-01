@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/guilhermemcandido/janus/internal/api"
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
@@ -30,7 +32,11 @@ func main() {
 	exchange := engine.NewExchange()
 	defer exchange.Close()
 
-	grpcServer := grpc.NewServer()
+	// MinTime must stay below the client's keepalive Time (pkg/client.Dial, 5s), or the server GOAWAYs it for pinging too often.
+	grpcServer := grpc.NewServer(grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+		MinTime:             4 * time.Second,
+		PermitWithoutStream: true,
+	}))
 	pb.RegisterExchangeServer(grpcServer, api.NewServer(exchange))
 
 	healthServer := health.NewServer()
