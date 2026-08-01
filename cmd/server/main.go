@@ -20,6 +20,9 @@ import (
 	"github.com/guilhermemcandido/janus/internal/engine"
 )
 
+// shutdownGracePeriod bounds GracefulStop, which otherwise waits forever on a long-lived stream like SubscribeTrades.
+const shutdownGracePeriod = 5 * time.Second
+
 func main() {
 	addr := flag.String("addr", ":50051", "listen address")
 	flag.Parse()
@@ -49,7 +52,17 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		log.Println("shutting down...")
-		grpcServer.GracefulStop()
+		stopped := make(chan struct{})
+		go func() {
+			grpcServer.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-time.After(shutdownGracePeriod):
+			log.Println("graceful stop timed out, forcing shutdown")
+			grpcServer.Stop()
+		}
 	}()
 
 	log.Printf("janus gRPC server listening on %s", *addr)
