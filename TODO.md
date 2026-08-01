@@ -13,10 +13,11 @@ Ongoing and planned work for Janus. See [README.md](README.md) for the project p
 - **Reliability hardening** — negative-depth panic fixed at all three layers (engine/API/CLI), server graceful shutdown, `Quoter` no longer loses track of an order on a transient cancel error, bounded shutdown timeout on bot cleanup.
 - **Tooling** — `Makefile` (`make help` for the full list): build, test, vet, fmt, proto regen, and quiet `run-*` targets for every binary.
 - **Bots detect an exchange restart and reset local state.** `Trader` pings the exchange every cycle and, on a detected epoch change, calls `Reset` on any strategy that implements it. `Quoter`, `Hedger`, and `Arbitrage` all implement it, dropping resting order IDs / net position instead of acting on stale assumptions. Verified live (kill/restart the server mid-session).
+- **Stress test: concurrent client reconnections.** Several clients hammering the server concurrently, kill/restart mid-flight, assert everyone recovers and each book ends up consistent. Found and fixed a real data race along the way: a resting order's shared pointer could be mutated by a later match on another goroutine's request while the original caller was still reading it for its own gRPC response — fixed by having the book store a private copy once an order rests.
 
 ## In progress / next up
 
-- **Stress test: concurrent bot reconnections.** Spin up several client connections, kill and restart the server mid-flight, assert every client recovers and the book ends up consistent — proving the reconnection story under real concurrent load, not just a single client.
+Nothing currently in flight.
 
 ## Planned
 
