@@ -9,6 +9,7 @@ service Exchange {
   rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc SubscribeTrades(SubscribeTradesRequest) returns (stream Trade);
+  rpc Ping(PingRequest) returns (PingResponse);
 }
 
 enum Side {
@@ -80,4 +81,10 @@ message GetOrderBookResponse {
 
 message SubscribeTradesRequest {
   string symbol = 1;
+}
+
+message PingRequest {}
+
+message PingResponse {
+  uint64 epoch = 1;
 }

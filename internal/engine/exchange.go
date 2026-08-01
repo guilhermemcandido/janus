@@ -1,15 +1,21 @@
 package engine
 
-import "sync"
+import (
+	"math/rand/v2"
+	"sync"
+)
 
 // Exchange holds one Engine per traded symbol, creating each (and its OrderBook and goroutine) on first use.
 type Exchange struct {
 	mu      sync.Mutex
 	engines map[string]*Engine
+
+	// Epoch is picked once per process so clients can detect that the exchange restarted and lost all state.
+	Epoch uint64
 }
 
 func NewExchange() *Exchange {
-	return &Exchange{engines: make(map[string]*Engine)}
+	return &Exchange{engines: make(map[string]*Engine), Epoch: rand.Uint64()}
 }
 
 // GetOrCreateEngine returns the Engine for symbol, starting its goroutine the first time it's requested.

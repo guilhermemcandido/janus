@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.35.1
-// source: proto/janus.proto
+// source: janus.proto
 
 package proto
 
@@ -23,6 +23,7 @@ const (
 	Exchange_CancelOrder_FullMethodName     = "/janus.Exchange/CancelOrder"
 	Exchange_GetOrderBook_FullMethodName    = "/janus.Exchange/GetOrderBook"
 	Exchange_SubscribeTrades_FullMethodName = "/janus.Exchange/SubscribeTrades"
+	Exchange_Ping_FullMethodName            = "/janus.Exchange/Ping"
 )
 
 // ExchangeClient is the client API for Exchange service.
@@ -33,6 +34,7 @@ type ExchangeClient interface {
 	CancelOrder(ctx context.Context, in *CancelOrderRequest, opts ...grpc.CallOption) (*CancelOrderResponse, error)
 	GetOrderBook(ctx context.Context, in *GetOrderBookRequest, opts ...grpc.CallOption) (*GetOrderBookResponse, error)
 	SubscribeTrades(ctx context.Context, in *SubscribeTradesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Trade], error)
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 }
 
 type exchangeClient struct {
@@ -92,6 +94,16 @@ func (c *exchangeClient) SubscribeTrades(ctx context.Context, in *SubscribeTrade
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Exchange_SubscribeTradesClient = grpc.ServerStreamingClient[Trade]
 
+func (c *exchangeClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, Exchange_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ExchangeServer is the server API for Exchange service.
 // All implementations must embed UnimplementedExchangeServer
 // for forward compatibility.
@@ -100,6 +112,7 @@ type ExchangeServer interface {
 	CancelOrder(context.Context, *CancelOrderRequest) (*CancelOrderResponse, error)
 	GetOrderBook(context.Context, *GetOrderBookRequest) (*GetOrderBookResponse, error)
 	SubscribeTrades(*SubscribeTradesRequest, grpc.ServerStreamingServer[Trade]) error
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	mustEmbedUnimplementedExchangeServer()
 }
 
@@ -121,6 +134,9 @@ func (UnimplementedExchangeServer) GetOrderBook(context.Context, *GetOrderBookRe
 }
 func (UnimplementedExchangeServer) SubscribeTrades(*SubscribeTradesRequest, grpc.ServerStreamingServer[Trade]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeTrades not implemented")
+}
+func (UnimplementedExchangeServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
 }
 func (UnimplementedExchangeServer) mustEmbedUnimplementedExchangeServer() {}
 func (UnimplementedExchangeServer) testEmbeddedByValue()                  {}
@@ -208,6 +224,24 @@ func _Exchange_SubscribeTrades_Handler(srv interface{}, stream grpc.ServerStream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Exchange_SubscribeTradesServer = grpc.ServerStreamingServer[Trade]
 
+func _Exchange_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Exchange_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Exchange_ServiceDesc is the grpc.ServiceDesc for Exchange service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -227,6 +261,10 @@ var Exchange_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetOrderBook",
 			Handler:    _Exchange_GetOrderBook_Handler,
 		},
+		{
+			MethodName: "Ping",
+			Handler:    _Exchange_Ping_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -235,5 +273,5 @@ var Exchange_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/janus.proto",
+	Metadata: "janus.proto",
 }

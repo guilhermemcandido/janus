@@ -10,6 +10,8 @@ import (
 	"syscall"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/guilhermemcandido/janus/internal/api"
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
@@ -30,6 +32,10 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterExchangeServer(grpcServer, api.NewServer(exchange))
+
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(grpcServer, healthServer)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
@@ -73,10 +74,23 @@ func (s *Server) GetOrderBook(ctx context.Context, req *pb.GetOrderBookRequest) 
 	}, nil
 }
 
+// Ping's Epoch changes when the exchange restarts, so clients can detect a lost state.
+func (s *Server) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	return &pb.PingResponse{Epoch: s.exchange.Epoch}, nil
+}
+
 func (s *Server) SubscribeTrades(req *pb.SubscribeTradesRequest, stream pb.Exchange_SubscribeTradesServer) error {
 	eng := s.exchange.GetOrCreateEngine(req.Symbol)
 	trades, unsub := eng.Subscribe()
 	defer unsub()
+
+	// Signals registration is done, closing the race with the non-blocking broadcast.
+	if err := stream.SendHeader(metadata.MD{}); err != nil {
+		return err
+	}
 
 	for {
 		select {
