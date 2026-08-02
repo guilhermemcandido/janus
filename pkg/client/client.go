@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/keepalive"
 
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
+	"github.com/guilhermemcandido/janus/internal/vtcodec"
 )
 
 // Client is a Go client for the Janus gRPC exchange API.
@@ -19,6 +20,7 @@ type Client struct {
 
 // Dial connects to a Janus exchange server at addr, with keepalive pings to detect a dead connection.
 func Dial(addr string, opts ...grpc.DialOption) (*Client, error) {
+	vtcodec.Register()
 	opts = append([]grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{

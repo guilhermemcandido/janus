@@ -35,14 +35,17 @@ fmt-check: ## Check formatting without modifying files
 
 check: fmt-check vet test-race ## Run all checks (format, vet, race tests)
 
-tools: ## Install protoc-gen-go and protoc-gen-go-grpc
+tools: ## Install protoc-gen-go, protoc-gen-go-grpc, and protoc-gen-go-vtproto
 	@go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	@go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@latest
 
 proto: ## Regenerate protobuf/gRPC code from proto/janus.proto
 	@PATH="$(PATH):$(GOBIN)" protoc \
 		--go_out=internal/api/proto --go_opt=paths=source_relative \
 		--go-grpc_out=internal/api/proto --go-grpc_opt=paths=source_relative \
+		--go-vtproto_out=internal/api/proto --go-vtproto_opt=paths=source_relative \
+		--go-vtproto_opt=features=marshal+unmarshal+size \
 		-I proto proto/janus.proto
 
 clean-build: ## Remove built binaries

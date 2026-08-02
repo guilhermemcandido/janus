@@ -13,6 +13,7 @@ import (
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
 	"github.com/guilhermemcandido/janus/internal/engine"
 	"github.com/guilhermemcandido/janus/internal/types"
+	"github.com/guilhermemcandido/janus/internal/vtcodec"
 )
 
 // Server implements the janus.Exchange gRPC service, routing each request to the right Engine by symbol.
@@ -22,6 +23,7 @@ type Server struct {
 }
 
 func NewServer(exchange *engine.Exchange) *Server {
+	vtcodec.Register()
 	return &Server{exchange: exchange}
 }
 
