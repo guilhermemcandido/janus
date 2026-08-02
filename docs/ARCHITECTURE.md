@@ -7,6 +7,7 @@ Design decisions, trade-offs, and diagrams for Janus. For what the project is an
 - [Core matching engine](#core-matching-engine)
 - [Market registration](#market-registration)
 - [Concurrency model](#concurrency-model)
+- [Performance](#performance)
 - [gRPC API](#grpc-api)
 - [Request flow](#request-flow)
 - [Trade subscription and reconnection](#trade-subscription-and-reconnection)
@@ -52,8 +53,9 @@ classDiagram
     }
     class BookSide {
         -side Side
-        -levels map~int64,PriceLevel~
-        -prices int64[]
+        -tick tickArray
+        -best int64
+        -free PriceLevel[]
         +GetOrCreateLevel(price) PriceLevel
         +Level(price) PriceLevel
         +RemoveLevel(price)
@@ -148,7 +150,7 @@ classDiagram
 
 ## Concurrency model
 
-**`OrderBook` is protected by single-goroutine ownership, not a lock.** Once wrapped in an `Engine`, the *only* goroutine that ever calls `Submit`/`Cancel` - and therefore the only one that ever touches `PriceLevel.index`, `BookSide.levels`/`prices`, or `OrderBook.orders` - is `Engine.Run()`'s own goroutine. Every other caller sends a command over a channel and blocks for the reply. This is Go's "share memory by communicating": instead of locking those maps, the code structurally guarantees only one goroutine can ever reach them, so there's nothing to lock.
+**`OrderBook` is protected by single-goroutine ownership, not a lock.** Once wrapped in an `Engine`, the *only* goroutine that ever calls `Submit`/`Cancel` - and therefore the only one that ever touches `PriceLevel.index`, `BookSide.tick`/`free`, or `OrderBook.orders` - is `Engine.Run()`'s own goroutine. Every other caller sends a command over a channel and blocks for the reply. This is Go's "share memory by communicating": instead of locking those maps, the code structurally guarantees only one goroutine can ever reach them, so there's nothing to lock.
 
 **`Exchange` is protected by a plain `sync.Mutex` instead**, because it's a genuinely different shape of problem. `GetOrCreateEngine`'s critical section is just a map lookup (and, once per symbol, an insert plus spawning a goroutine) - nanoseconds of work, called very frequently, with no real logic to serialize. Routing that through a dedicated channel and goroutine the way `OrderBook` does would be pure overhead for no benefit. Neither approach is "more correct" in general - the right synchronization primitive follows from the shape of the critical section it's protecting.
 
@@ -159,6 +161,16 @@ classDiagram
 **Each Engine command has its own type instead of one shared struct.** `Engine`'s inbox carries `any`, and `Run` dispatches with a type-switch (`submitCommand`, `cancelCommand`, `depthCommand`, ...), each with a reply channel of exactly the type it needs. This started as one shared `result` struct; it grew unwieldy once it reached 7 fields of genuinely different shapes for 8 command kinds that each only used 2-3 of them. A small generic helper (`call[R any]`) keeps the shutdown-safe send/receive logic in one place despite each command having its own reply type.
 
 **`Engine.BestBid`/`BestAsk` return a snapshot, not the live `PriceLevel`.** `BookSide.Best()` returns a pointer into the engine's own map - fine as long as it's only ever read from inside `Run()`'s goroutine, which was true until `ListSymbols` started calling it from the gRPC handler's goroutine while the engine kept mutating that same object on every subsequent order at that price. Found by code review, not a test: nothing exercised `ListSymbols` concurrently with active trading. Fixed with a `types.PriceLevelSnapshot{Price, Quantity}` copied while still on the engine's own goroutine, before the value ever crosses to the caller - the same "share memory by communicating" principle as everything else here, just applied one level down, where a raw pointer had leaked past the channel boundary undetected until a new caller actually exercised it concurrently with trading.
+
+## Performance
+
+**Benchmarks cover the full stack, not just direct calls into the book.** Alongside `Submit` (direct, and through `Engine`'s channel), benchmarks exist for `Cancel`, concurrent multi-symbol load through `Exchange` (`BenchmarkExchangeSubmit`, `b.RunParallel` spread across several symbols' `Engine`s), and a full gRPC `SubmitOrder` round-trip over an in-process `bufconn` connection - the real client/server stack, not a shortcut through the engine underneath it.
+
+**`BookSide`'s price index is a tick array, not a sorted slice.** Inserting or removing a price level used to mean a binary search into a sorted `[]int64` plus an `O(n)` shift to keep it sorted - fine at the small book widths in `make simulate`, but it degrades as the number of distinct resting prices grows. It's now a dense array indexed directly by price (`tickArray`), giving `O(1)` lookup and insert; `BookSide` tracks the current best price directly instead of reading it off the front of a sorted slice, and scans outward from it - one direction for bids, the other for asks - when the best level is removed or `Depth` needs more than one level. That scan is only expensive if real resting prices are far apart, which real order flow generally isn't. Measured with a synthetic wide spread (100,000 distinct ticks) to make the old cost visible: `Cancel` dropped from ~770ns to ~110ns/op.
+
+**The tick array is capped, deliberately.** A dense array indexed by raw price has one real weakness: a single order priced far from everything else would force it to allocate space for the entire gap. `maxTickPrice` (~1,048,576 ticks) bounds that, playing the same role a price collar plays on a real exchange. A limit order priced above it is rejected with `ErrPriceOutOfRange` *before* any matching starts, even though a marketable order that far out-of-range would never actually need to rest - checking early keeps `Submit` atomic (trades executed, then a rejection for the unrested remainder, was judged worse than occasionally over-rejecting a case that doesn't occur at any price real bots or an operator would use).
+
+**Object pooling targets were found with `pprof`, not guessed.** An allocation profile of `BenchmarkEngineSubmit` showed the reply channel `make(chan submitResult, 1)` - freshly allocated on every single `Submit`/`Cancel` call - as the single largest source of engine allocations, well ahead of anything in the matching logic itself. It's now recycled with `sync.Pool`, but only put back after a real reply was received: `Engine.Run`'s own select doesn't have to prefer a pending message over a closed `done`, so a call that returns early via shutdown might still get a delayed write from the engine after it's already returned - recycling that channel could hand a stale value to a completely unrelated future call. The profile's next-largest source was an emptied `PriceLevel` being thrown away and reallocated (fresh `container/list.List`, fresh index map) the next time an order rested at that price - `BookSide` now keeps a plain freelist of them instead (no `sync.Pool` needed; a book is only ever touched by its own `Engine` goroutine), capped at 1024 entries so a market that keeps drifting to new prices forever can't turn it into an unbounded leak. Together these cut `BenchmarkEngineSubmit` from 7 allocations/op to 3.
 
 ## gRPC API
 
