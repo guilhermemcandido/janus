@@ -55,17 +55,20 @@ wait_for_port "localhost${LISTEN}" 10
 "$BIN/cli" -addr "$ADDR" GOOG register Alphabet Inc. spot equity
 "$BIN/cli" -addr "$ADDR" AMZN register Amazon.com Inc. spot equity
 "$BIN/cli" -addr "$ADDR" NVDA register NVIDIA Corp. spot equity
+"$BIN/cli" -addr "$ADDR" META register Meta Platforms Inc. spot equity
 "$BIN/cli" -addr "$ADDR" AAPLF register AAPL futures contract
 "$BIN/cli" -addr "$ADDR" MSFTF register MSFT futures contract
 "$BIN/cli" -addr "$ADDR" GOOGF register GOOG futures contract
 "$BIN/cli" -addr "$ADDR" AMZNF register AMZN futures contract
 "$BIN/cli" -addr "$ADDR" NVDAF register NVDA futures contract
+"$BIN/cli" -addr "$ADDR" METAF register META futures contract
 
 spawn "$BIN/spot" -addr "$ADDR" AAPL
 spawn "$BIN/spot" -addr "$ADDR" -initial-price 300 MSFT
 spawn "$BIN/spot" -addr "$ADDR" -initial-price 140 GOOG
 spawn "$BIN/spot" -addr "$ADDR" -initial-price 180 AMZN
 spawn "$BIN/spot" -addr "$ADDR" -initial-price 120 NVDA
+spawn "$BIN/spot" -addr "$ADDR" -initial-price 250 META
 sleep 1
 
 # fallback-price matches each spot's initial-price, so a futures contract's first trade isn't at a
@@ -75,10 +78,11 @@ spawn "$BIN/futures" -addr "$ADDR" -spot MSFT -fallback-price 300 MSFTF
 spawn "$BIN/futures" -addr "$ADDR" -spot GOOG -fallback-price 140 GOOGF
 spawn "$BIN/futures" -addr "$ADDR" -spot AMZN -fallback-price 180 AMZNF
 spawn "$BIN/futures" -addr "$ADDR" -spot NVDA -fallback-price 120 NVDAF
+spawn "$BIN/futures" -addr "$ADDR" -spot META -fallback-price 250 METAF
 
 spawn "$BIN/hedger" -addr "$ADDR" -futures AAPLF -spot AAPL
 spawn "$BIN/arbitrage" -addr "$ADDR" -spot AAPL -futures AAPLF
-spawn "$BIN/noise" -addr "$ADDR" -symbols AAPL,MSFT,GOOG,AMZN,NVDA,AAPLF,MSFTF,GOOGF,AMZNF,NVDAF
+spawn "$BIN/noise" -addr "$ADDR" -symbols AAPL,MSFT,GOOG,AMZN,NVDA,META,AAPLF,MSFTF,GOOGF,AMZNF,NVDAF,METAF
 
 url="http://localhost${LISTEN}"
 echo
