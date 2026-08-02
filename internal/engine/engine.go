@@ -40,11 +40,11 @@ func (e *Engine) Run() {
 
 func (e *Engine) handle(msg any) {
 	switch cmd := msg.(type) {
-	case submitCommand:
+	case *submitCommand:
 		trades, err := e.book.Submit(cmd.order)
 		cmd.reply <- submitResult{trades: trades, err: err}
 		e.broadcast(trades)
-	case cancelCommand:
+	case *cancelCommand:
 		o, err := e.book.Cancel(cmd.orderID)
 		cmd.reply <- cancelResult{order: o, err: err}
 	case bestBidCommand:

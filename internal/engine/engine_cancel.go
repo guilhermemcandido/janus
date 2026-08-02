@@ -16,19 +16,19 @@ type cancelResult struct {
 	err   error
 }
 
-// cancelReplyPool recycles reply channels across Cancel calls, the same way submitReplyPool does
-// for Submit.
-var cancelReplyPool = sync.Pool{
-	New: func() any { return make(chan cancelResult, 1) },
+// cancelCommandPool recycles *cancelCommand the same way submitCommandPool does for Submit.
+var cancelCommandPool = sync.Pool{
+	New: func() any { return &cancelCommand{reply: make(chan cancelResult, 1)} },
 }
 
 func (e *Engine) Cancel(orderID uint64) (*types.Order, error) {
-	reply := cancelReplyPool.Get().(chan cancelResult)
-	r, err := call(e, cancelCommand{orderID: orderID, reply: reply}, reply)
+	cmd := cancelCommandPool.Get().(*cancelCommand)
+	cmd.orderID = orderID
+	r, err := call(e, cmd, cmd.reply)
 	if err != nil {
-		// See Submit: don't recycle a channel the engine might still write a stale value into.
+		// See Submit: don't recycle a command the engine might still write a stale value into.
 		return nil, err
 	}
-	cancelReplyPool.Put(reply)
+	cancelCommandPool.Put(cmd)
 	return r.order, r.err
 }
