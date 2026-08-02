@@ -63,7 +63,7 @@ wait_for_port "localhost${LISTEN}" 10
 "$BIN/cli" -addr "$ADDR" NVDAF register NVDA futures contract
 "$BIN/cli" -addr "$ADDR" METAF register META futures contract
 
-spawn "$BIN/spot" -addr "$ADDR" AAPL
+spawn "$BIN/spot" -addr "$ADDR" -initial-price 100 AAPL
 spawn "$BIN/spot" -addr "$ADDR" -initial-price 300 MSFT
 spawn "$BIN/spot" -addr "$ADDR" -initial-price 140 GOOG
 spawn "$BIN/spot" -addr "$ADDR" -initial-price 180 AMZN
