@@ -20,12 +20,13 @@ type Snapshot struct {
 	Books []BookState
 }
 
-// BookState is one symbol's resting orders and sequence counter.
+// BookState is one symbol's description, resting orders, and sequence counter.
 type BookState struct {
-	Symbol string
-	Bids   []types.Order
-	Asks   []types.Order
-	Seq    uint64
+	Symbol      string
+	Description string
+	Bids        []types.Order
+	Asks        []types.Order
+	Seq         uint64
 }
 
 // Save captures every symbol currently known to ex and atomically writes it to path.
@@ -35,8 +36,11 @@ func Save(ex *engine.Exchange, path string) error {
 
 	var snap Snapshot
 	for _, symbol := range ex.Symbols() {
-		bids, asks, seq := ex.GetOrCreateEngine(symbol).RestingOrders()
-		snap.Books = append(snap.Books, BookState{Symbol: symbol, Bids: bids, Asks: asks, Seq: seq})
+		eng, _ := ex.Lookup(symbol) // came from Symbols(), so it's guaranteed to be registered
+		bids, asks, seq := eng.RestingOrders()
+		snap.Books = append(snap.Books, BookState{
+			Symbol: symbol, Description: ex.Description(symbol), Bids: bids, Asks: asks, Seq: seq,
+		})
 	}
 
 	data, err := json.MarshalIndent(&snap, "", "  ")
@@ -93,6 +97,6 @@ func Restore(ex *engine.Exchange, snap *Snapshot) {
 		return
 	}
 	for _, book := range snap.Books {
-		ex.GetOrCreateEngine(book.Symbol).Restore(book.Bids, book.Asks, book.Seq)
+		ex.Register(book.Symbol, book.Description).Restore(book.Bids, book.Asks, book.Seq)
 	}
 }

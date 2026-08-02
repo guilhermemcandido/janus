@@ -13,7 +13,7 @@ func TestSave_LoadRoundTripPreservesRestingOrders(t *testing.T) {
 	ex := engine.NewExchange()
 	defer ex.Close()
 
-	eng := ex.GetOrCreateEngine("AAPL")
+	eng := ex.Register("AAPL", "Apple Inc.")
 	if _, err := eng.Submit(types.NewOrder("AAPL", types.Buy, types.Limit, 100, 10)); err != nil {
 		t.Fatalf("Submit returned error: %v", err)
 	}
@@ -30,8 +30,8 @@ func TestSave_LoadRoundTripPreservesRestingOrders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if len(snap.Books) != 1 || snap.Books[0].Symbol != "AAPL" {
-		t.Fatalf("Books = %+v, want one book for AAPL", snap.Books)
+	if len(snap.Books) != 1 || snap.Books[0].Symbol != "AAPL" || snap.Books[0].Description != "Apple Inc." {
+		t.Fatalf("Books = %+v, want one book for AAPL with its description", snap.Books)
 	}
 	book := snap.Books[0]
 	if len(book.Bids) != 1 || book.Bids[0].Price != 100 || book.Bids[0].Remaining != 10 {
@@ -45,7 +45,7 @@ func TestSave_LoadRoundTripPreservesRestingOrders(t *testing.T) {
 func TestSave_LeavesNoTempFileBehind(t *testing.T) {
 	ex := engine.NewExchange()
 	defer ex.Close()
-	ex.GetOrCreateEngine("AAPL")
+	ex.Register("AAPL", "Apple Inc.")
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exchange.snapshot.json")
@@ -75,7 +75,7 @@ func TestLoad_MissingFileReturnsNilWithoutError(t *testing.T) {
 func TestRestore_SeedsExchangeFromSnapshot(t *testing.T) {
 	source := engine.NewExchange()
 	defer source.Close()
-	if _, err := source.GetOrCreateEngine("AAPL").Submit(types.NewOrder("AAPL", types.Buy, types.Limit, 100, 10)); err != nil {
+	if _, err := source.Register("AAPL", "Apple Inc.").Submit(types.NewOrder("AAPL", types.Buy, types.Limit, 100, 10)); err != nil {
 		t.Fatalf("Submit returned error: %v", err)
 	}
 
@@ -93,7 +93,14 @@ func TestRestore_SeedsExchangeFromSnapshot(t *testing.T) {
 	defer restored.Close()
 	Restore(restored, snap)
 
-	book := restored.GetOrCreateEngine("AAPL").Depth(10)
+	eng, ok := restored.Lookup("AAPL")
+	if !ok {
+		t.Fatalf("Lookup(\"AAPL\") = false, want the restored snapshot to have re-registered it")
+	}
+	if got := restored.Description("AAPL"); got != "Apple Inc." {
+		t.Fatalf("Description = %q, want %q", got, "Apple Inc.")
+	}
+	book := eng.Depth(10)
 	if len(book.Bids) != 1 || book.Bids[0].Price != 100 || book.Bids[0].Quantity != 10 {
 		t.Fatalf("Bids = %+v, want [{Price:100 Quantity:10}]", book.Bids)
 	}

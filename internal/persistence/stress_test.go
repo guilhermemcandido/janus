@@ -14,7 +14,7 @@ import (
 func TestSave_ConcurrentCallsNeverCorruptTheFile(t *testing.T) {
 	ex := engine.NewExchange()
 	defer ex.Close()
-	if _, err := ex.GetOrCreateEngine("AAPL").Submit(types.NewOrder("AAPL", types.Buy, types.Limit, 100, 10)); err != nil {
+	if _, err := ex.Register("AAPL", "Apple Inc.").Submit(types.NewOrder("AAPL", types.Buy, types.Limit, 100, 10)); err != nil {
 		t.Fatalf("Submit returned error: %v", err)
 	}
 
@@ -48,7 +48,7 @@ func TestSave_ConcurrentWithLiveTradingIsRaceFree(t *testing.T) {
 
 	symbols := []string{"AAPL", "TSLA", "GOOG"}
 	for _, s := range symbols {
-		ex.GetOrCreateEngine(s)
+		ex.Register(s, s)
 	}
 
 	path := filepath.Join(t.TempDir(), "exchange.snapshot.json")
@@ -69,7 +69,7 @@ func TestSave_ConcurrentWithLiveTradingIsRaceFree(t *testing.T) {
 				default:
 				}
 				symbol := symbols[rng.IntN(len(symbols))]
-				eng := ex.GetOrCreateEngine(symbol)
+				eng, _ := ex.Lookup(symbol) // pre-registered above, before any goroutine started
 				if len(resting) > 0 && rng.IntN(3) == 0 {
 					id := resting[rng.IntN(len(resting))]
 					_, _ = eng.Cancel(id)
@@ -121,11 +121,14 @@ func TestSave_ConcurrentWithLiveTradingIsRaceFree(t *testing.T) {
 	Restore(restored, snap)
 
 	for _, symbol := range symbols {
-		eng := restored.GetOrCreateEngine(symbol)
+		eng, ok := restored.Lookup(symbol)
+		if !ok {
+			t.Fatalf("[%s] not registered after Restore", symbol)
+		}
 		bid := eng.BestBid()
 		ask := eng.BestAsk()
-		if bid != nil && ask != nil && bid.Price() >= ask.Price() {
-			t.Fatalf("[%s] restored book crossed: best bid %d >= best ask %d", symbol, bid.Price(), ask.Price())
+		if bid != nil && ask != nil && bid.Price >= ask.Price {
+			t.Fatalf("[%s] restored book crossed: best bid %d >= best ask %d", symbol, bid.Price, ask.Price)
 		}
 	}
 }

@@ -13,7 +13,7 @@ import (
 func TestRunLoop_SavesPeriodicallyUntilCancelled(t *testing.T) {
 	ex := engine.NewExchange()
 	defer ex.Close()
-	ex.GetOrCreateEngine("AAPL")
+	ex.Register("AAPL", "Apple Inc.")
 
 	path := filepath.Join(t.TempDir(), "exchange.snapshot.json")
 	ctx, cancel := context.WithCancel(context.Background())
