@@ -27,6 +27,13 @@ flowchart LR
 
 Details on how each piece works, the concurrency model, and full diagrams live in **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
+## Dependencies
+
+- [Go 1.26 or later](https://go.dev/dl/)
+- `make` (GNU Make - preinstalled on macOS and most Linux distributions)
+
+Everything else (gRPC, protobuf) is fetched automatically by `go build`. `protoc` and its Go plugins are only needed to regenerate the gRPC code (`make proto`); the generated code is already committed, so this isn't required to build or run Janus.
+
 ## Quick start
 
 Everything below is a `Makefile` target - run `make help` for the full list.
