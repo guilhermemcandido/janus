@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Janus</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Janus</h1>
+  <span id="status" class="status disconnected">disconnected</span>
+</header>
+
+<div id="error-banner" class="error-banner hidden"></div>
+
+<section id="markets-view">
+  <div class="markets-header">
+    <h2>Markets</h2>
+    <form id="jump-form">
+      <input id="jump-input" placeholder="Jump to symbol" autocomplete="off">
+      <button type="submit">Go</button>
+    </form>
+  </div>
+  <div id="markets-grid" class="markets-grid"></div>
+</section>
+
+<section id="detail-view" class="hidden">
+  <button id="back-btn" class="back-btn" type="button">&larr; Markets</button>
+
+  <div class="detail-header">
+    <h2 id="detail-symbol"></h2>
+    <span id="detail-description" class="detail-description"></span>
+    <span id="detail-price" class="detail-price">-</span>
+    <span id="detail-change" class="detail-change flat">-</span>
+    <span class="detail-substat">High <b id="detail-high">-</b></span>
+    <span class="detail-substat">Low <b id="detail-low">-</b></span>
+    <span class="detail-substat">Vol <b id="detail-volume">-</b></span>
+  </div>
+
+  <div class="chart-wrap">
+    <canvas id="price-chart"></canvas>
+  </div>
+
+  <main>
+    <section class="book">
+      <h2>Order book</h2>
+      <div class="depth-ladder">
+        <div class="ladder-header">
+          <span class="ladder-label bid">Bid</span>
+          <span class="ladder-price"></span>
+          <span class="ladder-label ask">Ask</span>
+        </div>
+        <div id="ladder-asks" class="ladder-zone"></div>
+        <div class="ladder-spread">
+          <span>Spread</span>
+          <span id="ladder-spread-value">-</span>
+        </div>
+        <div id="ladder-bids" class="ladder-zone"></div>
+      </div>
+    </section>
+
+    <section class="tape">
+      <h2>Live trades</h2>
+      <div class="tape-header">
+        <span>Price</span>
+        <span>Qty</span>
+      </div>
+      <ul id="tape-list"></ul>
+    </section>
+
+    <section class="order-form">
+      <h2>Submit order</h2>
+      <form id="order-form">
+        <select id="side-select">
+          <option value="buy">Buy</option>
+          <option value="sell">Sell</option>
+        </select>
+        <select id="type-select">
+          <option value="limit">Limit</option>
+          <option value="market">Market</option>
+        </select>
+        <input id="price-input" type="number" placeholder="Price" min="1">
+        <input id="quantity-input" type="number" placeholder="Quantity" min="1" required>
+        <button type="submit">Submit</button>
+      </form>
+    </section>
+
+    <section class="my-orders">
+      <h2>Your resting orders</h2>
+      <table id="my-orders-table">
+        <thead><tr><th>ID</th><th>Side</th><th>Price</th><th>Remaining</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -29,6 +29,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/ws", web.NewWebSocketHandler(c))
+	mux.Handle("/", web.NewStaticHandler())
 	httpServer := &http.Server{Addr: *listen, Handler: mux}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
