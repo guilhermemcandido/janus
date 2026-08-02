@@ -1,4 +1,4 @@
-.PHONY: help build test test-race vet fmt fmt-check check proto tools clean clean-state \
+.PHONY: help build test test-race vet fmt fmt-check check proto tools clean-build clean-data clean-all \
 	run-server run-cli run-watch run-web run-spot run-futures run-hedger run-noise run-arbitrage simulate
 
 BIN_DIR := bin
@@ -45,11 +45,13 @@ proto: ## Regenerate protobuf/gRPC code from proto/janus.proto
 		--go-grpc_out=internal/api/proto --go-grpc_opt=paths=source_relative \
 		-I proto proto/janus.proto
 
-clean: ## Remove built binaries
+clean-build: ## Remove built binaries
 	@rm -rf $(BIN_DIR)
 
-clean-state: ## Remove the persisted exchange snapshot, so the next run-server starts fresh
+clean-data: ## Remove the persisted exchange snapshot, so the next run-server starts fresh
 	@rm -rf $(DATA_DIR)
+
+clean-all: clean-build clean-data ## Remove both built binaries and persisted state
 
 ##@ Run (pass flags/symbols with ARGS="...", e.g. make run-spot ARGS="AAPL")
 
@@ -100,5 +102,5 @@ run-arbitrage: ## Run the arbitrage bot, e.g. ARGS="-spot AAPL -futures AAPLF"
 
 ##@ Demo
 
-simulate: build ## Run server + web UI + bots trading AAPL/MSFT/GOOG plus an AAPL futures/hedge/arb setup; opens http://localhost:8080
+simulate: build ## Run server + web UI + a full bot fleet across 12 markets; opens http://localhost:8080
 	-@./scripts/simulate.sh
