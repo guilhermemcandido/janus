@@ -2,6 +2,10 @@
 
 A simulated financial market, written in Go - not just a matching engine, but a living market. An in-memory exchange sits behind a gRPC API, and independent bot programs (market makers, a hedger, a noise trader, an arbitrage bot) trade against each other over that same API, so prices move from emergent activity rather than only from whatever a human submits by hand. Watch it happen live in a browser, or drive it yourself from a CLI.
 
+## How it works
+
+![Markets overview and a symbol's live order book, chart, and trade tape](docs/img/demo.gif)
+
 ```mermaid
 flowchart LR
     Spot[spot market-maker] --> AAPL[(AAPL book)]
@@ -19,9 +23,7 @@ flowchart LR
     Browser -->|WebSocket| AAPLF
 ```
 
-![Markets overview and a symbol's live order book, chart, and trade tape](docs/img/demo.gif)
-
-Details on how each piece works, the concurrency model, and full diagrams live in **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**. What's left to build is in **[TODO.md](TODO.md)**.
+Details on how each piece works, the concurrency model, and full diagrams live in **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## Quick start
 
@@ -56,18 +58,35 @@ make run-web   ARGS="-addr localhost:50051"  # web UI at :8080
 
 `make check` runs formatting, `go vet`, and the full test suite (with `-race`).
 
-## What's built
+## Components
+
+### Core exchange
 
 - **Matching engine** - in-memory order book, price-time priority, limit and market orders, integer-tick pricing. Property-tested and benchmarked.
 - **Explicit market registration** - a symbol must be listed before anything can trade, watch, or query it; nothing is created lazily on first order. Modeled after how real exchanges separate listing an instrument from trading it - bots never register anything, only the CLI/operator does.
 - **Per-symbol market stats and trade history** - last/open/high/low price and volume, plus a bounded recent-trade ring buffer, exposed over gRPC and used to drive the web UI's markets list and price chart.
 - **Persistence** - every book's resting orders, sequence counter, and description are snapshotted to disk periodically and on shutdown, and restored on startup, so a restart resumes rather than starts empty.
 - **gRPC API** - submit, cancel, book snapshots, market listing/registration/stats, a streaming trade feed, and a liveness/restart-detection check, all backed directly by the engine.
+
+### Client and bots
+
 - **Go client library (`pkg/client`)** - the public, importable foundation every consumer (CLI, bots, web UI) is built on, with automatic reconnection for the trade feed.
-- **CLI (`cmd/cli`)** - interactive REPL, script-file replay, one-shot commands, and market registration.
 - **Five bots** - two market makers (spot, futures), a hedger, a noise trader, and an arbitrage bot, all sharing one runner/strategy pattern and submitting randomized order sizes for a more realistic-looking book. See [ARCHITECTURE.md](docs/ARCHITECTURE.md#bots) for what each one actually does.
+
+### Interfaces
+
+- **CLI (`cmd/cli`)** - interactive REPL, script-file replay, one-shot commands, and market registration.
 - **Web UI (`cmd/web`)** - a hand-rolled WebSocket server (`internal/websocket`), a JSON-to-`pkg/client` bridge (`internal/web`), and a vanilla JS/HTML/CSS frontend embedded via `embed.FS`: a live markets overview and a per-symbol view with an order-book depth ladder, a colored trade tape, and a price chart.
-- **One-command demo (`make simulate`)** - registers twelve markets (six spot equities, a futures contract on each) and launches the server, web UI, and a full fleet of bots trading all of them.
+
+## Performance
+
+Found and fixed with `pprof`/benchmarks, not guessed. Full story in [ARCHITECTURE.md](docs/ARCHITECTURE.md#performance).
+
+| Change | Before | After |
+| --- | --- | --- |
+| `Cancel`, at a synthetic 100,000-tick price spread (tick array replacing a sorted-slice-plus-binary-search index) | ~770 ns/op | ~110 ns/op |
+| `Engine.Submit` allocations (pooled reply channels and `PriceLevel`s) | 7 allocs/op | 3 allocs/op |
+| `Engine.Cancel` allocations (same pooling) | 3 allocs/op | 1 alloc/op |
 
 ## Project layout
 
@@ -79,7 +98,3 @@ proto/          janus.proto - the gRPC service definition, source of truth
 scripts/        simulate.sh - one-command demo: server + web UI + a full bot fleet across 12 markets
 docs/           ARCHITECTURE.md and the screenshots/GIF used above
 ```
-
-## Language plan
-
-Janus is being finished completely in Go first. Once it is, the core matching engine (only) gets ported to Rust as a separate repo, for a GC-vs-no-GC latency comparison - and optionally, lower priority, to OCaml after that. Details in [TODO.md](TODO.md).
