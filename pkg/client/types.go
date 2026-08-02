@@ -49,3 +49,17 @@ type BookSnapshot struct {
 	Bids   []PriceLevel
 	Asks   []PriceLevel
 }
+
+// MarketSummary summarizes trading activity for one symbol since the exchange started.
+type MarketSummary struct {
+	Symbol      string
+	Description string
+	HasTraded   bool
+	LastPrice   int64
+	OpenPrice   int64
+	High        int64
+	Low         int64
+	Volume      uint64
+	BestBid     *PriceLevel
+	BestAsk     *PriceLevel
+}

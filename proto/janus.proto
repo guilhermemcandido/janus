@@ -10,6 +10,9 @@ service Exchange {
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc SubscribeTrades(SubscribeTradesRequest) returns (stream Trade);
   rpc Ping(PingRequest) returns (PingResponse);
+  rpc ListSymbols(ListSymbolsRequest) returns (ListSymbolsResponse);
+  rpc GetTradeHistory(GetTradeHistoryRequest) returns (GetTradeHistoryResponse);
+  rpc RegisterMarket(RegisterMarketRequest) returns (RegisterMarketResponse);
 }
 
 enum Side {
@@ -87,4 +90,41 @@ message PingRequest {}
 
 message PingResponse {
   uint64 epoch = 1;
+}
+
+message MarketSummary {
+  string symbol = 1;
+  string description = 10;
+  bool has_traded = 2;
+  int64 last_price = 3;
+  int64 open_price = 4;
+  int64 high = 5;
+  int64 low = 6;
+  uint64 volume = 7;
+  PriceLevel best_bid = 8;
+  PriceLevel best_ask = 9;
+}
+
+message ListSymbolsRequest {}
+
+message ListSymbolsResponse {
+  repeated MarketSummary markets = 1;
+}
+
+message GetTradeHistoryRequest {
+  string symbol = 1;
+}
+
+message GetTradeHistoryResponse {
+  string symbol = 1;
+  repeated Trade trades = 2;
+}
+
+message RegisterMarketRequest {
+  string symbol = 1;
+  string description = 2;
+}
+
+message RegisterMarketResponse {
+  MarketSummary market = 1;
 }

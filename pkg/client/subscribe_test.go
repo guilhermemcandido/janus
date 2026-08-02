@@ -38,6 +38,7 @@ func TestClient_SubscribeTradesReconnectsAfterServerRestart(t *testing.T) {
 	addr := lis.Addr().String()
 
 	exchange1 := engine.NewExchange()
+	exchange1.Register("AAPL", "Apple Inc.")
 	srv1 := grpc.NewServer()
 	pb.RegisterExchangeServer(srv1, api.NewServer(exchange1))
 	go func() { _ = srv1.Serve(lis) }()
@@ -70,6 +71,7 @@ func TestClient_SubscribeTradesReconnectsAfterServerRestart(t *testing.T) {
 	exchange1.Close()
 
 	exchange2 := engine.NewExchange()
+	exchange2.Register("AAPL", "Apple Inc.")
 	lis2, err := net.Listen("tcp", addr)
 	if err != nil {
 		t.Fatalf("relisten on %s: %v", addr, err)

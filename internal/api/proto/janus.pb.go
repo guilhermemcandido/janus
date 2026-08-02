@@ -801,6 +801,394 @@ func (x *PingResponse) GetEpoch() uint64 {
 	return 0
 }
 
+type MarketSummary struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Description   string                 `protobuf:"bytes,10,opt,name=description,proto3" json:"description,omitempty"`
+	HasTraded     bool                   `protobuf:"varint,2,opt,name=has_traded,json=hasTraded,proto3" json:"has_traded,omitempty"`
+	LastPrice     int64                  `protobuf:"varint,3,opt,name=last_price,json=lastPrice,proto3" json:"last_price,omitempty"`
+	OpenPrice     int64                  `protobuf:"varint,4,opt,name=open_price,json=openPrice,proto3" json:"open_price,omitempty"`
+	High          int64                  `protobuf:"varint,5,opt,name=high,proto3" json:"high,omitempty"`
+	Low           int64                  `protobuf:"varint,6,opt,name=low,proto3" json:"low,omitempty"`
+	Volume        uint64                 `protobuf:"varint,7,opt,name=volume,proto3" json:"volume,omitempty"`
+	BestBid       *PriceLevel            `protobuf:"bytes,8,opt,name=best_bid,json=bestBid,proto3" json:"best_bid,omitempty"`
+	BestAsk       *PriceLevel            `protobuf:"bytes,9,opt,name=best_ask,json=bestAsk,proto3" json:"best_ask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MarketSummary) Reset() {
+	*x = MarketSummary{}
+	mi := &file_janus_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarketSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarketSummary) ProtoMessage() {}
+
+func (x *MarketSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_janus_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarketSummary.ProtoReflect.Descriptor instead.
+func (*MarketSummary) Descriptor() ([]byte, []int) {
+	return file_janus_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *MarketSummary) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *MarketSummary) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *MarketSummary) GetHasTraded() bool {
+	if x != nil {
+		return x.HasTraded
+	}
+	return false
+}
+
+func (x *MarketSummary) GetLastPrice() int64 {
+	if x != nil {
+		return x.LastPrice
+	}
+	return 0
+}
+
+func (x *MarketSummary) GetOpenPrice() int64 {
+	if x != nil {
+		return x.OpenPrice
+	}
+	return 0
+}
+
+func (x *MarketSummary) GetHigh() int64 {
+	if x != nil {
+		return x.High
+	}
+	return 0
+}
+
+func (x *MarketSummary) GetLow() int64 {
+	if x != nil {
+		return x.Low
+	}
+	return 0
+}
+
+func (x *MarketSummary) GetVolume() uint64 {
+	if x != nil {
+		return x.Volume
+	}
+	return 0
+}
+
+func (x *MarketSummary) GetBestBid() *PriceLevel {
+	if x != nil {
+		return x.BestBid
+	}
+	return nil
+}
+
+func (x *MarketSummary) GetBestAsk() *PriceLevel {
+	if x != nil {
+		return x.BestAsk
+	}
+	return nil
+}
+
+type ListSymbolsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSymbolsRequest) Reset() {
+	*x = ListSymbolsRequest{}
+	mi := &file_janus_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSymbolsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSymbolsRequest) ProtoMessage() {}
+
+func (x *ListSymbolsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_janus_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSymbolsRequest.ProtoReflect.Descriptor instead.
+func (*ListSymbolsRequest) Descriptor() ([]byte, []int) {
+	return file_janus_proto_rawDescGZIP(), []int{13}
+}
+
+type ListSymbolsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Markets       []*MarketSummary       `protobuf:"bytes,1,rep,name=markets,proto3" json:"markets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSymbolsResponse) Reset() {
+	*x = ListSymbolsResponse{}
+	mi := &file_janus_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSymbolsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSymbolsResponse) ProtoMessage() {}
+
+func (x *ListSymbolsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_janus_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSymbolsResponse.ProtoReflect.Descriptor instead.
+func (*ListSymbolsResponse) Descriptor() ([]byte, []int) {
+	return file_janus_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListSymbolsResponse) GetMarkets() []*MarketSummary {
+	if x != nil {
+		return x.Markets
+	}
+	return nil
+}
+
+type GetTradeHistoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTradeHistoryRequest) Reset() {
+	*x = GetTradeHistoryRequest{}
+	mi := &file_janus_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTradeHistoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTradeHistoryRequest) ProtoMessage() {}
+
+func (x *GetTradeHistoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_janus_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTradeHistoryRequest.ProtoReflect.Descriptor instead.
+func (*GetTradeHistoryRequest) Descriptor() ([]byte, []int) {
+	return file_janus_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetTradeHistoryRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+type GetTradeHistoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Trades        []*Trade               `protobuf:"bytes,2,rep,name=trades,proto3" json:"trades,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTradeHistoryResponse) Reset() {
+	*x = GetTradeHistoryResponse{}
+	mi := &file_janus_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTradeHistoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTradeHistoryResponse) ProtoMessage() {}
+
+func (x *GetTradeHistoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_janus_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTradeHistoryResponse.ProtoReflect.Descriptor instead.
+func (*GetTradeHistoryResponse) Descriptor() ([]byte, []int) {
+	return file_janus_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetTradeHistoryResponse) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *GetTradeHistoryResponse) GetTrades() []*Trade {
+	if x != nil {
+		return x.Trades
+	}
+	return nil
+}
+
+type RegisterMarketRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterMarketRequest) Reset() {
+	*x = RegisterMarketRequest{}
+	mi := &file_janus_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterMarketRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterMarketRequest) ProtoMessage() {}
+
+func (x *RegisterMarketRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_janus_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterMarketRequest.ProtoReflect.Descriptor instead.
+func (*RegisterMarketRequest) Descriptor() ([]byte, []int) {
+	return file_janus_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *RegisterMarketRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *RegisterMarketRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type RegisterMarketResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Market        *MarketSummary         `protobuf:"bytes,1,opt,name=market,proto3" json:"market,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterMarketResponse) Reset() {
+	*x = RegisterMarketResponse{}
+	mi := &file_janus_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterMarketResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterMarketResponse) ProtoMessage() {}
+
+func (x *RegisterMarketResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_janus_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterMarketResponse.ProtoReflect.Descriptor instead.
+func (*RegisterMarketResponse) Descriptor() ([]byte, []int) {
+	return file_janus_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *RegisterMarketResponse) GetMarket() *MarketSummary {
+	if x != nil {
+		return x.Market
+	}
+	return nil
+}
+
 var File_janus_proto protoreflect.FileDescriptor
 
 const file_janus_proto_rawDesc = "" +
@@ -850,20 +1238,51 @@ const file_janus_proto_rawDesc = "" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"\r\n" +
 	"\vPingRequest\"$\n" +
 	"\fPingResponse\x12\x14\n" +
-	"\x05epoch\x18\x01 \x01(\x04R\x05epoch*\x19\n" +
+	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\"\xc0\x02\n" +
+	"\rMarketSummary\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12 \n" +
+	"\vdescription\x18\n" +
+	" \x01(\tR\vdescription\x12\x1d\n" +
+	"\n" +
+	"has_traded\x18\x02 \x01(\bR\thasTraded\x12\x1d\n" +
+	"\n" +
+	"last_price\x18\x03 \x01(\x03R\tlastPrice\x12\x1d\n" +
+	"\n" +
+	"open_price\x18\x04 \x01(\x03R\topenPrice\x12\x12\n" +
+	"\x04high\x18\x05 \x01(\x03R\x04high\x12\x10\n" +
+	"\x03low\x18\x06 \x01(\x03R\x03low\x12\x16\n" +
+	"\x06volume\x18\a \x01(\x04R\x06volume\x12,\n" +
+	"\bbest_bid\x18\b \x01(\v2\x11.janus.PriceLevelR\abestBid\x12,\n" +
+	"\bbest_ask\x18\t \x01(\v2\x11.janus.PriceLevelR\abestAsk\"\x14\n" +
+	"\x12ListSymbolsRequest\"E\n" +
+	"\x13ListSymbolsResponse\x12.\n" +
+	"\amarkets\x18\x01 \x03(\v2\x14.janus.MarketSummaryR\amarkets\"0\n" +
+	"\x16GetTradeHistoryRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"W\n" +
+	"\x17GetTradeHistoryResponse\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12$\n" +
+	"\x06trades\x18\x02 \x03(\v2\f.janus.TradeR\x06trades\"Q\n" +
+	"\x15RegisterMarketRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\"F\n" +
+	"\x16RegisterMarketResponse\x12,\n" +
+	"\x06market\x18\x01 \x01(\v2\x14.janus.MarketSummaryR\x06market*\x19\n" +
 	"\x04Side\x12\a\n" +
 	"\x03BUY\x10\x00\x12\b\n" +
 	"\x04SELL\x10\x01*\"\n" +
 	"\tOrderType\x12\t\n" +
 	"\x05LIMIT\x10\x00\x12\n" +
 	"\n" +
-	"\x06MARKET\x10\x012\xd2\x02\n" +
+	"\x06MARKET\x10\x012\xb9\x04\n" +
 	"\bExchange\x12D\n" +
 	"\vSubmitOrder\x12\x19.janus.SubmitOrderRequest\x1a\x1a.janus.SubmitOrderResponse\x12D\n" +
 	"\vCancelOrder\x12\x19.janus.CancelOrderRequest\x1a\x1a.janus.CancelOrderResponse\x12G\n" +
 	"\fGetOrderBook\x12\x1a.janus.GetOrderBookRequest\x1a\x1b.janus.GetOrderBookResponse\x12@\n" +
 	"\x0fSubscribeTrades\x12\x1d.janus.SubscribeTradesRequest\x1a\f.janus.Trade0\x01\x12/\n" +
-	"\x04Ping\x12\x12.janus.PingRequest\x1a\x13.janus.PingResponseB7Z5github.com/guilhermemcandido/janus/internal/api/protob\x06proto3"
+	"\x04Ping\x12\x12.janus.PingRequest\x1a\x13.janus.PingResponse\x12D\n" +
+	"\vListSymbols\x12\x19.janus.ListSymbolsRequest\x1a\x1a.janus.ListSymbolsResponse\x12P\n" +
+	"\x0fGetTradeHistory\x12\x1d.janus.GetTradeHistoryRequest\x1a\x1e.janus.GetTradeHistoryResponse\x12M\n" +
+	"\x0eRegisterMarket\x12\x1c.janus.RegisterMarketRequest\x1a\x1d.janus.RegisterMarketResponseB7Z5github.com/guilhermemcandido/janus/internal/api/protob\x06proto3"
 
 var (
 	file_janus_proto_rawDescOnce sync.Once
@@ -878,22 +1297,29 @@ func file_janus_proto_rawDescGZIP() []byte {
 }
 
 var file_janus_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_janus_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_janus_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_janus_proto_goTypes = []any{
-	(Side)(0),                      // 0: janus.Side
-	(OrderType)(0),                 // 1: janus.OrderType
-	(*Order)(nil),                  // 2: janus.Order
-	(*Trade)(nil),                  // 3: janus.Trade
-	(*PriceLevel)(nil),             // 4: janus.PriceLevel
-	(*SubmitOrderRequest)(nil),     // 5: janus.SubmitOrderRequest
-	(*SubmitOrderResponse)(nil),    // 6: janus.SubmitOrderResponse
-	(*CancelOrderRequest)(nil),     // 7: janus.CancelOrderRequest
-	(*CancelOrderResponse)(nil),    // 8: janus.CancelOrderResponse
-	(*GetOrderBookRequest)(nil),    // 9: janus.GetOrderBookRequest
-	(*GetOrderBookResponse)(nil),   // 10: janus.GetOrderBookResponse
-	(*SubscribeTradesRequest)(nil), // 11: janus.SubscribeTradesRequest
-	(*PingRequest)(nil),            // 12: janus.PingRequest
-	(*PingResponse)(nil),           // 13: janus.PingResponse
+	(Side)(0),                       // 0: janus.Side
+	(OrderType)(0),                  // 1: janus.OrderType
+	(*Order)(nil),                   // 2: janus.Order
+	(*Trade)(nil),                   // 3: janus.Trade
+	(*PriceLevel)(nil),              // 4: janus.PriceLevel
+	(*SubmitOrderRequest)(nil),      // 5: janus.SubmitOrderRequest
+	(*SubmitOrderResponse)(nil),     // 6: janus.SubmitOrderResponse
+	(*CancelOrderRequest)(nil),      // 7: janus.CancelOrderRequest
+	(*CancelOrderResponse)(nil),     // 8: janus.CancelOrderResponse
+	(*GetOrderBookRequest)(nil),     // 9: janus.GetOrderBookRequest
+	(*GetOrderBookResponse)(nil),    // 10: janus.GetOrderBookResponse
+	(*SubscribeTradesRequest)(nil),  // 11: janus.SubscribeTradesRequest
+	(*PingRequest)(nil),             // 12: janus.PingRequest
+	(*PingResponse)(nil),            // 13: janus.PingResponse
+	(*MarketSummary)(nil),           // 14: janus.MarketSummary
+	(*ListSymbolsRequest)(nil),      // 15: janus.ListSymbolsRequest
+	(*ListSymbolsResponse)(nil),     // 16: janus.ListSymbolsResponse
+	(*GetTradeHistoryRequest)(nil),  // 17: janus.GetTradeHistoryRequest
+	(*GetTradeHistoryResponse)(nil), // 18: janus.GetTradeHistoryResponse
+	(*RegisterMarketRequest)(nil),   // 19: janus.RegisterMarketRequest
+	(*RegisterMarketResponse)(nil),  // 20: janus.RegisterMarketResponse
 }
 var file_janus_proto_depIdxs = []int32{
 	0,  // 0: janus.Order.side:type_name -> janus.Side
@@ -905,21 +1331,32 @@ var file_janus_proto_depIdxs = []int32{
 	2,  // 6: janus.CancelOrderResponse.order:type_name -> janus.Order
 	4,  // 7: janus.GetOrderBookResponse.bids:type_name -> janus.PriceLevel
 	4,  // 8: janus.GetOrderBookResponse.asks:type_name -> janus.PriceLevel
-	5,  // 9: janus.Exchange.SubmitOrder:input_type -> janus.SubmitOrderRequest
-	7,  // 10: janus.Exchange.CancelOrder:input_type -> janus.CancelOrderRequest
-	9,  // 11: janus.Exchange.GetOrderBook:input_type -> janus.GetOrderBookRequest
-	11, // 12: janus.Exchange.SubscribeTrades:input_type -> janus.SubscribeTradesRequest
-	12, // 13: janus.Exchange.Ping:input_type -> janus.PingRequest
-	6,  // 14: janus.Exchange.SubmitOrder:output_type -> janus.SubmitOrderResponse
-	8,  // 15: janus.Exchange.CancelOrder:output_type -> janus.CancelOrderResponse
-	10, // 16: janus.Exchange.GetOrderBook:output_type -> janus.GetOrderBookResponse
-	3,  // 17: janus.Exchange.SubscribeTrades:output_type -> janus.Trade
-	13, // 18: janus.Exchange.Ping:output_type -> janus.PingResponse
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	4,  // 9: janus.MarketSummary.best_bid:type_name -> janus.PriceLevel
+	4,  // 10: janus.MarketSummary.best_ask:type_name -> janus.PriceLevel
+	14, // 11: janus.ListSymbolsResponse.markets:type_name -> janus.MarketSummary
+	3,  // 12: janus.GetTradeHistoryResponse.trades:type_name -> janus.Trade
+	14, // 13: janus.RegisterMarketResponse.market:type_name -> janus.MarketSummary
+	5,  // 14: janus.Exchange.SubmitOrder:input_type -> janus.SubmitOrderRequest
+	7,  // 15: janus.Exchange.CancelOrder:input_type -> janus.CancelOrderRequest
+	9,  // 16: janus.Exchange.GetOrderBook:input_type -> janus.GetOrderBookRequest
+	11, // 17: janus.Exchange.SubscribeTrades:input_type -> janus.SubscribeTradesRequest
+	12, // 18: janus.Exchange.Ping:input_type -> janus.PingRequest
+	15, // 19: janus.Exchange.ListSymbols:input_type -> janus.ListSymbolsRequest
+	17, // 20: janus.Exchange.GetTradeHistory:input_type -> janus.GetTradeHistoryRequest
+	19, // 21: janus.Exchange.RegisterMarket:input_type -> janus.RegisterMarketRequest
+	6,  // 22: janus.Exchange.SubmitOrder:output_type -> janus.SubmitOrderResponse
+	8,  // 23: janus.Exchange.CancelOrder:output_type -> janus.CancelOrderResponse
+	10, // 24: janus.Exchange.GetOrderBook:output_type -> janus.GetOrderBookResponse
+	3,  // 25: janus.Exchange.SubscribeTrades:output_type -> janus.Trade
+	13, // 26: janus.Exchange.Ping:output_type -> janus.PingResponse
+	16, // 27: janus.Exchange.ListSymbols:output_type -> janus.ListSymbolsResponse
+	18, // 28: janus.Exchange.GetTradeHistory:output_type -> janus.GetTradeHistoryResponse
+	20, // 29: janus.Exchange.RegisterMarket:output_type -> janus.RegisterMarketResponse
+	22, // [22:30] is the sub-list for method output_type
+	14, // [14:22] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_janus_proto_init() }
@@ -933,7 +1370,7 @@ func file_janus_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_janus_proto_rawDesc), len(file_janus_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   12,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

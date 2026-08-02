@@ -76,6 +76,29 @@ func levelsToProto(levels []types.PriceLevelSnapshot) []*pb.PriceLevel {
 	return out
 }
 
+// bestLevelToProto converts a top-of-book snapshot, or nil if that side of the book is empty.
+func bestLevelToProto(l *types.PriceLevelSnapshot) *pb.PriceLevel {
+	if l == nil {
+		return nil
+	}
+	return &pb.PriceLevel{Price: l.Price, Quantity: l.Quantity}
+}
+
+func marketSummaryToProto(description string, stats types.MarketStats, bestBid, bestAsk *types.PriceLevelSnapshot) *pb.MarketSummary {
+	return &pb.MarketSummary{
+		Symbol:      stats.Symbol,
+		Description: description,
+		HasTraded:   stats.HasTraded,
+		LastPrice:   stats.LastPrice,
+		OpenPrice:   stats.OpenPrice,
+		High:        stats.High,
+		Low:         stats.Low,
+		Volume:      stats.Volume,
+		BestBid:     bestLevelToProto(bestBid),
+		BestAsk:     bestLevelToProto(bestAsk),
+	}
+}
+
 // toStatus maps a domain error to the gRPC status code a client should see.
 func toStatus(err error) error {
 	switch err {

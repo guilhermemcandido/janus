@@ -28,6 +28,9 @@ func TestClient_ConcurrentClientsRecoverFromServerRestart(t *testing.T) {
 	addr := lis.Addr().String()
 
 	exchange1 := engine.NewExchange()
+	for i := 0; i < numClients; i++ {
+		exchange1.Register(fmt.Sprintf("SYM%d", i), fmt.Sprintf("SYM%d", i))
+	}
 	srv1 := grpc.NewServer()
 	pb.RegisterExchangeServer(srv1, api.NewServer(exchange1))
 	go func() { _ = srv1.Serve(lis) }()
@@ -98,6 +101,9 @@ func TestClient_ConcurrentClientsRecoverFromServerRestart(t *testing.T) {
 	exchange1.Close()
 
 	exchange2 := engine.NewExchange()
+	for i := 0; i < numClients; i++ {
+		exchange2.Register(fmt.Sprintf("SYM%d", i), fmt.Sprintf("SYM%d", i))
+	}
 	lis2, err := net.Listen("tcp", addr)
 	if err != nil {
 		t.Fatalf("relisten on %s: %v", addr, err)

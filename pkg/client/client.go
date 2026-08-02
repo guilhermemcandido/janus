@@ -84,3 +84,35 @@ func (c *Client) Ping(ctx context.Context) (epoch uint64, err error) {
 	}
 	return resp.Epoch, nil
 }
+
+// RegisterMarket lists symbol on the exchange, so it can be traded, watched, and shown as a market.
+// Calling it again for an already-registered symbol is a no-op; the first description wins.
+func (c *Client) RegisterMarket(ctx context.Context, symbol, description string) (MarketSummary, error) {
+	resp, err := c.stub.RegisterMarket(ctx, &pb.RegisterMarketRequest{Symbol: symbol, Description: description})
+	if err != nil {
+		return MarketSummary{}, err
+	}
+	return marketSummaryFromProto(resp.Market), nil
+}
+
+// ListSymbols returns a market summary for every symbol currently known to the exchange.
+func (c *Client) ListSymbols(ctx context.Context) ([]MarketSummary, error) {
+	resp, err := c.stub.ListSymbols(ctx, &pb.ListSymbolsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MarketSummary, len(resp.Markets))
+	for i, m := range resp.Markets {
+		out[i] = marketSummaryFromProto(m)
+	}
+	return out, nil
+}
+
+// GetTradeHistory returns the most recent trades for symbol, oldest first.
+func (c *Client) GetTradeHistory(ctx context.Context, symbol string) ([]Trade, error) {
+	resp, err := c.stub.GetTradeHistory(ctx, &pb.GetTradeHistoryRequest{Symbol: symbol})
+	if err != nil {
+		return nil, err
+	}
+	return tradesFromProto(resp.Trades), nil
+}

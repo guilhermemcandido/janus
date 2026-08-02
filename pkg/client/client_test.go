@@ -47,9 +47,24 @@ func newTestClient(t *testing.T) *Client {
 	return c
 }
 
+func TestClient_RegisterMarket(t *testing.T) {
+	c := newTestClient(t)
+
+	market, err := c.RegisterMarket(context.Background(), "AAPL", "Apple Inc.")
+	if err != nil {
+		t.Fatalf("RegisterMarket returned error: %v", err)
+	}
+	if market.Symbol != "AAPL" || market.Description != "Apple Inc." {
+		t.Fatalf("market = %+v, want Symbol=AAPL Description=\"Apple Inc.\"", market)
+	}
+}
+
 func TestClient_SubmitOrderMatches(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
+	if _, err := c.RegisterMarket(ctx, "AAPL", "Apple Inc."); err != nil {
+		t.Fatalf("RegisterMarket returned error: %v", err)
+	}
 
 	sellOrder, sellTrades, err := c.SubmitOrder(ctx, "AAPL", Sell, Limit, 100, 50)
 	if err != nil {
@@ -74,6 +89,9 @@ func TestClient_SubmitOrderMatches(t *testing.T) {
 func TestClient_CancelOrder(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
+	if _, err := c.RegisterMarket(ctx, "AAPL", "Apple Inc."); err != nil {
+		t.Fatalf("RegisterMarket returned error: %v", err)
+	}
 
 	order, _, err := c.SubmitOrder(ctx, "AAPL", Sell, Limit, 100, 50)
 	if err != nil {
@@ -101,6 +119,9 @@ func TestClient_CancelOrderNotFoundPropagatesGRPCStatus(t *testing.T) {
 func TestClient_GetOrderBook(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
+	if _, err := c.RegisterMarket(ctx, "AAPL", "Apple Inc."); err != nil {
+		t.Fatalf("RegisterMarket returned error: %v", err)
+	}
 
 	if _, _, err := c.SubmitOrder(ctx, "AAPL", Buy, Limit, 100, 10); err != nil {
 		t.Fatalf("SubmitOrder returned error: %v", err)
@@ -154,6 +175,9 @@ func TestClient_SubscribeTradesReceivesLiveTrades(t *testing.T) {
 	c := newTestClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	if _, err := c.RegisterMarket(ctx, "AAPL", "Apple Inc."); err != nil {
+		t.Fatalf("RegisterMarket returned error: %v", err)
+	}
 
 	// SubscribeTrades only returns once the server has confirmed registration, so no race here.
 	trades, err := c.SubscribeTrades(ctx, "AAPL")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"sync"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -50,9 +51,70 @@ func newTestClient(t *testing.T) pb.ExchangeClient {
 	return pb.NewExchangeClient(conn)
 }
 
+func registerMarket(t *testing.T, client pb.ExchangeClient, symbol, description string) {
+	t.Helper()
+	if _, err := client.RegisterMarket(context.Background(), &pb.RegisterMarketRequest{
+		Symbol: symbol, Description: description,
+	}); err != nil {
+		t.Fatalf("RegisterMarket(%q) returned error: %v", symbol, err)
+	}
+}
+
+func TestServer_RegisterMarketIsIdempotent(t *testing.T) {
+	client := newTestClient(t)
+	ctx := context.Background()
+
+	registerMarket(t, client, "AAPL", "Apple Inc.")
+	resp, err := client.RegisterMarket(ctx, &pb.RegisterMarketRequest{Symbol: "AAPL", Description: "something else"})
+	if err != nil {
+		t.Fatalf("second RegisterMarket returned error: %v", err)
+	}
+	if resp.Market.Description != "Apple Inc." {
+		t.Fatalf("Description = %q, want the first registration's description to win", resp.Market.Description)
+	}
+}
+
+func TestServer_RegisterMarketRejectsEmptySymbol(t *testing.T) {
+	client := newTestClient(t)
+
+	_, err := client.RegisterMarket(context.Background(), &pb.RegisterMarketRequest{Symbol: "", Description: "x"})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status code = %v, want InvalidArgument (err: %v)", status.Code(err), err)
+	}
+}
+
+func TestServer_RegisterMarketRejectsWhitespaceOnlySymbol(t *testing.T) {
+	client := newTestClient(t)
+
+	_, err := client.RegisterMarket(context.Background(), &pb.RegisterMarketRequest{Symbol: "   ", Description: "x"})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status code = %v, want InvalidArgument (err: %v)", status.Code(err), err)
+	}
+}
+
+func TestServer_RegisterMarketNormalizesSymbolCase(t *testing.T) {
+	client := newTestClient(t)
+	ctx := context.Background()
+
+	resp, err := client.RegisterMarket(ctx, &pb.RegisterMarketRequest{Symbol: "aapl", Description: "Apple Inc."})
+	if err != nil {
+		t.Fatalf("RegisterMarket returned error: %v", err)
+	}
+	if resp.Market.Symbol != "AAPL" {
+		t.Fatalf("Symbol = %q, want upper-cased %q", resp.Market.Symbol, "AAPL")
+	}
+
+	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
+	}); err != nil {
+		t.Fatalf("SubmitOrder(\"AAPL\") returned error: %v, want the lower-cased registration to be reachable in upper case", err)
+	}
+}
+
 func TestServer_SubmitOrderMatches(t *testing.T) {
 	client := newTestClient(t)
 	ctx := context.Background()
+	registerMarket(t, client, "AAPL", "Apple Inc.")
 
 	sellResp, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_SELL, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 50,
@@ -97,6 +159,7 @@ func TestServer_SubmitOrderRejectsCancelledContext(t *testing.T) {
 
 func TestServer_SubmitOrderRejectsInvalidQuantity(t *testing.T) {
 	client := newTestClient(t)
+	registerMarket(t, client, "AAPL", "Apple Inc.")
 
 	_, err := client.SubmitOrder(context.Background(), &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 0,
@@ -106,9 +169,21 @@ func TestServer_SubmitOrderRejectsInvalidQuantity(t *testing.T) {
 	}
 }
 
+func TestServer_SubmitOrderFailsForUnregisteredSymbol(t *testing.T) {
+	client := newTestClient(t)
+
+	_, err := client.SubmitOrder(context.Background(), &pb.SubmitOrderRequest{
+		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
+	})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("status code = %v, want NotFound (err: %v)", status.Code(err), err)
+	}
+}
+
 func TestServer_CancelOrder(t *testing.T) {
 	client := newTestClient(t)
 	ctx := context.Background()
+	registerMarket(t, client, "AAPL", "Apple Inc.")
 
 	submitResp, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_SELL, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 50,
@@ -130,6 +205,18 @@ func TestServer_CancelOrder(t *testing.T) {
 
 func TestServer_CancelOrderNotFound(t *testing.T) {
 	client := newTestClient(t)
+	registerMarket(t, client, "AAPL", "Apple Inc.")
+
+	_, err := client.CancelOrder(context.Background(), &pb.CancelOrderRequest{
+		Symbol: "AAPL", OrderId: 999,
+	})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("status code = %v, want NotFound (err: %v)", status.Code(err), err)
+	}
+}
+
+func TestServer_CancelOrderFailsForUnregisteredSymbol(t *testing.T) {
+	client := newTestClient(t)
 
 	_, err := client.CancelOrder(context.Background(), &pb.CancelOrderRequest{
 		Symbol: "AAPL", OrderId: 999,
@@ -142,6 +229,7 @@ func TestServer_CancelOrderNotFound(t *testing.T) {
 func TestServer_GetOrderBook(t *testing.T) {
 	client := newTestClient(t)
 	ctx := context.Background()
+	registerMarket(t, client, "AAPL", "Apple Inc.")
 
 	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
@@ -175,6 +263,56 @@ func TestServer_GetOrderBookRejectsNegativeDepth(t *testing.T) {
 	}
 }
 
+func TestServer_GetOrderBookFailsForUnregisteredSymbol(t *testing.T) {
+	client := newTestClient(t)
+
+	_, err := client.GetOrderBook(context.Background(), &pb.GetOrderBookRequest{Symbol: "AAPL", Depth: 10})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("status code = %v, want NotFound (err: %v)", status.Code(err), err)
+	}
+}
+
+func TestServer_ListSymbolsIncludesRegisteredSymbolsEvenBeforeTrading(t *testing.T) {
+	client := newTestClient(t)
+	registerMarket(t, client, "AAPL", "Apple Inc.")
+
+	resp, err := client.ListSymbols(context.Background(), &pb.ListSymbolsRequest{})
+	if err != nil {
+		t.Fatalf("ListSymbols returned error: %v", err)
+	}
+	if len(resp.Markets) != 1 || resp.Markets[0].Symbol != "AAPL" || resp.Markets[0].Description != "Apple Inc." {
+		t.Fatalf("markets = %+v, want a single unregistered-but-listed AAPL", resp.Markets)
+	}
+	if resp.Markets[0].HasTraded {
+		t.Fatalf("markets = %+v, want HasTraded=false before any trade", resp.Markets)
+	}
+}
+
+func TestServer_ListSymbolsReflectsTradingActivity(t *testing.T) {
+	client := newTestClient(t)
+	ctx := context.Background()
+	registerMarket(t, client, "AAPL", "Apple Inc.")
+
+	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+		Symbol: "AAPL", Side: pb.Side_SELL, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
+	}); err != nil {
+		t.Fatalf("SubmitOrder returned error: %v", err)
+	}
+	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
+	}); err != nil {
+		t.Fatalf("SubmitOrder returned error: %v", err)
+	}
+
+	resp, err := client.ListSymbols(ctx, &pb.ListSymbolsRequest{})
+	if err != nil {
+		t.Fatalf("ListSymbols returned error: %v", err)
+	}
+	if len(resp.Markets) != 1 || !resp.Markets[0].HasTraded || resp.Markets[0].LastPrice != 100 {
+		t.Fatalf("AAPL market = %+v, want HasTraded=true and LastPrice=100", resp.Markets)
+	}
+}
+
 func TestServer_PingReturnsExchangeEpoch(t *testing.T) {
 	client := newTestClient(t)
 
@@ -191,6 +329,7 @@ func TestServer_SubscribeTradesReceivesLiveTrades(t *testing.T) {
 	client := newTestClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	registerMarket(t, client, "AAPL", "Apple Inc.")
 
 	stream, err := client.SubscribeTrades(ctx, &pb.SubscribeTradesRequest{Symbol: "AAPL"})
 	if err != nil {
@@ -222,5 +361,68 @@ func TestServer_SubscribeTradesReceivesLiveTrades(t *testing.T) {
 	}
 	if tr.Quantity != 10 || tr.Symbol != "AAPL" {
 		t.Fatalf("trade = %+v, want qty 10 on AAPL", tr)
+	}
+}
+
+func TestServer_SubscribeTradesFailsForUnregisteredSymbol(t *testing.T) {
+	client := newTestClient(t)
+
+	stream, err := client.SubscribeTrades(context.Background(), &pb.SubscribeTradesRequest{Symbol: "AAPL"})
+	if err != nil {
+		t.Fatalf("SubscribeTrades returned error: %v", err)
+	}
+	if _, err := stream.Recv(); status.Code(err) != codes.NotFound {
+		t.Fatalf("status code = %v, want NotFound (err: %v)", status.Code(err), err)
+	}
+}
+
+// Guards against a real race found live: ListSymbols/RegisterMarket read the best bid/ask via a
+// pointer into the engine's own live PriceLevel while trades kept mutating it concurrently.
+func TestServer_ListSymbolsIsRaceFreeUnderConcurrentTrading(t *testing.T) {
+	client := newTestClient(t)
+	ctx := context.Background()
+	registerMarket(t, client, "AAPL", "Apple Inc.")
+
+	const iterations = 200
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			side := pb.Side_BUY
+			if i%2 == 1 {
+				side = pb.Side_SELL
+			}
+			_, _ = client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+				Symbol: "AAPL", Side: side, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 1,
+			})
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			if _, err := client.ListSymbols(ctx, &pb.ListSymbolsRequest{}); err != nil {
+				t.Errorf("ListSymbols returned error: %v", err)
+				return
+			}
+			if _, err := client.RegisterMarket(ctx, &pb.RegisterMarketRequest{Symbol: "AAPL", Description: "Apple Inc."}); err != nil {
+				t.Errorf("RegisterMarket returned error: %v", err)
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+}
+
+func TestServer_GetTradeHistoryFailsForUnregisteredSymbol(t *testing.T) {
+	client := newTestClient(t)
+
+	_, err := client.GetTradeHistory(context.Background(), &pb.GetTradeHistoryRequest{Symbol: "AAPL"})
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("status code = %v, want NotFound (err: %v)", status.Code(err), err)
 	}
 }

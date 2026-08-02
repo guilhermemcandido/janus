@@ -71,3 +71,26 @@ func levelsFromProto(levels []*pb.PriceLevel) []PriceLevel {
 	}
 	return out
 }
+
+// levelFromProto converts a top-of-book level, or nil if that side of the book is empty.
+func levelFromProto(l *pb.PriceLevel) *PriceLevel {
+	if l == nil {
+		return nil
+	}
+	return &PriceLevel{Price: l.Price, Quantity: l.Quantity}
+}
+
+func marketSummaryFromProto(m *pb.MarketSummary) MarketSummary {
+	return MarketSummary{
+		Symbol:      m.Symbol,
+		Description: m.Description,
+		HasTraded:   m.HasTraded,
+		LastPrice:   m.LastPrice,
+		OpenPrice:   m.OpenPrice,
+		High:        m.High,
+		Low:         m.Low,
+		Volume:      m.Volume,
+		BestBid:     levelFromProto(m.BestBid),
+		BestAsk:     levelFromProto(m.BestAsk),
+	}
+}

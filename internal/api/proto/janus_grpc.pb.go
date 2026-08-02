@@ -24,6 +24,9 @@ const (
 	Exchange_GetOrderBook_FullMethodName    = "/janus.Exchange/GetOrderBook"
 	Exchange_SubscribeTrades_FullMethodName = "/janus.Exchange/SubscribeTrades"
 	Exchange_Ping_FullMethodName            = "/janus.Exchange/Ping"
+	Exchange_ListSymbols_FullMethodName     = "/janus.Exchange/ListSymbols"
+	Exchange_GetTradeHistory_FullMethodName = "/janus.Exchange/GetTradeHistory"
+	Exchange_RegisterMarket_FullMethodName  = "/janus.Exchange/RegisterMarket"
 )
 
 // ExchangeClient is the client API for Exchange service.
@@ -35,6 +38,9 @@ type ExchangeClient interface {
 	GetOrderBook(ctx context.Context, in *GetOrderBookRequest, opts ...grpc.CallOption) (*GetOrderBookResponse, error)
 	SubscribeTrades(ctx context.Context, in *SubscribeTradesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Trade], error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
+	ListSymbols(ctx context.Context, in *ListSymbolsRequest, opts ...grpc.CallOption) (*ListSymbolsResponse, error)
+	GetTradeHistory(ctx context.Context, in *GetTradeHistoryRequest, opts ...grpc.CallOption) (*GetTradeHistoryResponse, error)
+	RegisterMarket(ctx context.Context, in *RegisterMarketRequest, opts ...grpc.CallOption) (*RegisterMarketResponse, error)
 }
 
 type exchangeClient struct {
@@ -104,6 +110,36 @@ func (c *exchangeClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc
 	return out, nil
 }
 
+func (c *exchangeClient) ListSymbols(ctx context.Context, in *ListSymbolsRequest, opts ...grpc.CallOption) (*ListSymbolsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSymbolsResponse)
+	err := c.cc.Invoke(ctx, Exchange_ListSymbols_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *exchangeClient) GetTradeHistory(ctx context.Context, in *GetTradeHistoryRequest, opts ...grpc.CallOption) (*GetTradeHistoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTradeHistoryResponse)
+	err := c.cc.Invoke(ctx, Exchange_GetTradeHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *exchangeClient) RegisterMarket(ctx context.Context, in *RegisterMarketRequest, opts ...grpc.CallOption) (*RegisterMarketResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterMarketResponse)
+	err := c.cc.Invoke(ctx, Exchange_RegisterMarket_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ExchangeServer is the server API for Exchange service.
 // All implementations must embed UnimplementedExchangeServer
 // for forward compatibility.
@@ -113,6 +149,9 @@ type ExchangeServer interface {
 	GetOrderBook(context.Context, *GetOrderBookRequest) (*GetOrderBookResponse, error)
 	SubscribeTrades(*SubscribeTradesRequest, grpc.ServerStreamingServer[Trade]) error
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
+	ListSymbols(context.Context, *ListSymbolsRequest) (*ListSymbolsResponse, error)
+	GetTradeHistory(context.Context, *GetTradeHistoryRequest) (*GetTradeHistoryResponse, error)
+	RegisterMarket(context.Context, *RegisterMarketRequest) (*RegisterMarketResponse, error)
 	mustEmbedUnimplementedExchangeServer()
 }
 
@@ -137,6 +176,15 @@ func (UnimplementedExchangeServer) SubscribeTrades(*SubscribeTradesRequest, grpc
 }
 func (UnimplementedExchangeServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedExchangeServer) ListSymbols(context.Context, *ListSymbolsRequest) (*ListSymbolsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSymbols not implemented")
+}
+func (UnimplementedExchangeServer) GetTradeHistory(context.Context, *GetTradeHistoryRequest) (*GetTradeHistoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTradeHistory not implemented")
+}
+func (UnimplementedExchangeServer) RegisterMarket(context.Context, *RegisterMarketRequest) (*RegisterMarketResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegisterMarket not implemented")
 }
 func (UnimplementedExchangeServer) mustEmbedUnimplementedExchangeServer() {}
 func (UnimplementedExchangeServer) testEmbeddedByValue()                  {}
@@ -242,6 +290,60 @@ func _Exchange_Ping_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Exchange_ListSymbols_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSymbolsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServer).ListSymbols(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Exchange_ListSymbols_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServer).ListSymbols(ctx, req.(*ListSymbolsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Exchange_GetTradeHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTradeHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServer).GetTradeHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Exchange_GetTradeHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServer).GetTradeHistory(ctx, req.(*GetTradeHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Exchange_RegisterMarket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterMarketRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExchangeServer).RegisterMarket(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Exchange_RegisterMarket_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExchangeServer).RegisterMarket(ctx, req.(*RegisterMarketRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Exchange_ServiceDesc is the grpc.ServiceDesc for Exchange service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -264,6 +366,18 @@ var Exchange_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ping",
 			Handler:    _Exchange_Ping_Handler,
+		},
+		{
+			MethodName: "ListSymbols",
+			Handler:    _Exchange_ListSymbols_Handler,
+		},
+		{
+			MethodName: "GetTradeHistory",
+			Handler:    _Exchange_GetTradeHistory_Handler,
+		},
+		{
+			MethodName: "RegisterMarket",
+			Handler:    _Exchange_RegisterMarket_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
