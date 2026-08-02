@@ -108,3 +108,7 @@ proto/          janus.proto - the gRPC service definition, source of truth
 scripts/        simulate.sh - one-command demo: server + web UI + a full bot fleet across 12 markets
 docs/           ARCHITECTURE.md and the screenshots/GIF used above
 ```
+
+## License
+
+[Apache 2.0](LICENSE)
