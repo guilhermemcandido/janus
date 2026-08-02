@@ -102,7 +102,7 @@ func marketSummaryToProto(description string, stats types.MarketStats, bestBid, 
 // toStatus maps a domain error to the gRPC status code a client should see.
 func toStatus(err error) error {
 	switch err {
-	case engine.ErrInvalidQuantity, engine.ErrInvalidPrice, engine.ErrSymbolMismatch:
+	case engine.ErrInvalidQuantity, engine.ErrInvalidPrice, engine.ErrPriceOutOfRange, engine.ErrSymbolMismatch:
 		return status.Error(codes.InvalidArgument, err.Error())
 	case engine.ErrOrderNotFound:
 		return status.Error(codes.NotFound, err.Error())

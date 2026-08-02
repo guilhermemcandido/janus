@@ -1,89 +1,129 @@
 package engine
 
-import (
-	"sort"
+import "github.com/guilhermemcandido/janus/internal/types"
 
-	"github.com/guilhermemcandido/janus/internal/types"
-)
-
-// BookSide holds one side of the book (all bids or all asks), sorted so index 0 is always the best price.
+// BookSide holds one side of the book (all bids or all asks) in a tickArray, tracking the current
+// best price directly so Best/GetOrCreateLevel/RemoveLevel don't need to search the common case.
 type BookSide struct {
-	side   types.Side
-	levels map[int64]*PriceLevel
-	prices []int64
+	side  types.Side
+	tick  tickArray
+	best  int64 // meaningful only while count > 0
+	count int
 }
 
 func NewBookSide(side types.Side) *BookSide {
-	return &BookSide{
-		side:   side,
-		levels: make(map[int64]*PriceLevel),
-	}
+	return &BookSide{side: side}
 }
 
-// key maps price to an ascending sort key: bids sort by -price (highest first), asks sort by price (lowest first).
-func (bs *BookSide) key(price int64) int64 {
+// better reports whether a is a better price than b for this side: higher for bids, lower for asks.
+func (bs *BookSide) better(a, b int64) bool {
 	if bs.side == types.Buy {
-		return -price
+		return a > b
 	}
-	return price
+	return a < b
 }
 
-// GetOrCreateLevel returns the PriceLevel at price, inserting it into the sorted index if it's new.
+// GetOrCreateLevel returns the PriceLevel at price, inserting it into the tick array if it's new.
+// Callers must have already validated price against maxTickPrice (Submit does, for any order that
+// can reach here) - the tick array itself just trusts it and grows to fit.
 func (bs *BookSide) GetOrCreateLevel(price int64) *PriceLevel {
-	if pl, ok := bs.levels[price]; ok {
+	if pl := bs.tick.get(price); pl != nil {
 		return pl
 	}
 	pl := NewPriceLevel(price)
-	bs.levels[price] = pl
-
-	i := sort.Search(len(bs.prices), func(i int) bool {
-		return bs.key(bs.prices[i]) >= bs.key(price)
-	})
-	bs.prices = append(bs.prices, 0)
-	copy(bs.prices[i+1:], bs.prices[i:])
-	bs.prices[i] = price
+	bs.tick.set(price, pl)
+	bs.count++
+	if bs.count == 1 || bs.better(price, bs.best) {
+		bs.best = price
+	}
 	return pl
 }
 
-// RemoveLevel deletes a price level from both the map and the sorted index.
+// RemoveLevel deletes a price level from the tick array, scanning toward the next occupied price
+// if it was the best.
 func (bs *BookSide) RemoveLevel(price int64) {
-	if _, ok := bs.levels[price]; !ok {
+	if bs.tick.get(price) == nil {
 		return
 	}
-	delete(bs.levels, price)
+	bs.tick.delete(price)
+	bs.count--
 
-	i := sort.Search(len(bs.prices), func(i int) bool {
-		return bs.key(bs.prices[i]) >= bs.key(price)
-	})
-	bs.prices = append(bs.prices[:i], bs.prices[i+1:]...)
+	if price != bs.best {
+		return
+	}
+	if bs.count == 0 {
+		bs.best = 0
+		return
+	}
+	bs.best = bs.nextOccupied(price)
+}
+
+// nextOccupied scans away from price, toward worse prices, for the next occupied level. Bounded by
+// the tick array's range; cheap in practice since real order flow keeps levels dense near the top.
+func (bs *BookSide) nextOccupied(price int64) int64 {
+	step := bs.step()
+	for p := price + step; p >= 1 && p <= maxTickPrice; p += step {
+		if bs.tick.get(p) != nil {
+			return p
+		}
+	}
+	return 0
+}
+
+// step is the direction of decreasing price desirability: down for bids, up for asks.
+func (bs *BookSide) step() int64 {
+	if bs.side == types.Buy {
+		return -1
+	}
+	return 1
 }
 
 // Level returns the PriceLevel at price without creating one, and whether it exists.
 func (bs *BookSide) Level(price int64) (*PriceLevel, bool) {
-	pl, ok := bs.levels[price]
-	return pl, ok
+	pl := bs.tick.get(price)
+	return pl, pl != nil
 }
 
 // Best returns the PriceLevel at the best price for this side, or nil if the side is empty.
 func (bs *BookSide) Best() *PriceLevel {
-	if len(bs.prices) == 0 {
+	if bs.count == 0 {
 		return nil
 	}
-	return bs.levels[bs.prices[0]]
+	return bs.tick.get(bs.best)
 }
 
 func (bs *BookSide) IsEmpty() bool {
-	return len(bs.prices) == 0
+	return bs.count == 0
+}
+
+// walk visits every occupied level from best to worst, stopping early if visit returns false.
+func (bs *BookSide) walk(visit func(*PriceLevel) bool) {
+	if bs.count == 0 {
+		return
+	}
+	step := bs.step()
+	visited := 0
+	for p := bs.best; p >= 1 && p <= maxTickPrice && visited < bs.count; p += step {
+		pl := bs.tick.get(p)
+		if pl == nil {
+			continue
+		}
+		visited++
+		if !visit(pl) {
+			return
+		}
+	}
 }
 
 // Orders returns every resting order on this side, best price first and FIFO within each level.
 func (bs *BookSide) Orders() []types.Order {
 	var out []types.Order
-	for _, price := range bs.prices {
-		for _, o := range bs.levels[price].Orders() {
+	bs.walk(func(pl *PriceLevel) bool {
+		for _, o := range pl.Orders() {
 			out = append(out, *o)
 		}
-	}
+		return true
+	})
 	return out
 }
 
@@ -92,13 +132,13 @@ func (bs *BookSide) Depth(n int) []types.PriceLevelSnapshot {
 	if n < 0 {
 		n = 0
 	}
-	if n > len(bs.prices) {
-		n = len(bs.prices)
-	}
-	out := make([]types.PriceLevelSnapshot, n)
-	for i := 0; i < n; i++ {
-		level := bs.levels[bs.prices[i]]
-		out[i] = types.PriceLevelSnapshot{Price: level.Price(), Quantity: level.TotalQuantity()}
-	}
+	out := make([]types.PriceLevelSnapshot, 0, min(n, bs.count))
+	bs.walk(func(pl *PriceLevel) bool {
+		if len(out) >= n {
+			return false
+		}
+		out = append(out, types.PriceLevelSnapshot{Price: pl.Price(), Quantity: pl.TotalQuantity()})
+		return true
+	})
 	return out
 }

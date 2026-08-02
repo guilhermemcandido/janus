@@ -77,6 +77,24 @@ func TestSubmit_RejectsNonPositivePriceForLimitOrders(t *testing.T) {
 	}
 }
 
+func TestSubmit_RejectsPriceAboveMaxTick(t *testing.T) {
+	ob := NewOrderBook("TEST")
+
+	_, err := ob.Submit(newOrder(types.Buy, types.Limit, maxTickPrice+1, 10))
+
+	if err != ErrPriceOutOfRange {
+		t.Fatalf("err = %v, want ErrPriceOutOfRange", err)
+	}
+}
+
+func TestSubmit_AcceptsPriceAtMaxTick(t *testing.T) {
+	ob := NewOrderBook("TEST")
+
+	if _, err := ob.Submit(newOrder(types.Buy, types.Limit, maxTickPrice, 10)); err != nil {
+		t.Fatalf("price at maxTickPrice returned unexpected error: %v", err)
+	}
+}
+
 func TestSubmit_MarketOrderIgnoresZeroPrice(t *testing.T) {
 	ob := NewOrderBook("TEST")
 

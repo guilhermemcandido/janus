@@ -20,10 +20,11 @@ Ongoing and planned work for Janus. See [README.md](README.md) for the project p
 - **Per-symbol market stats and trade history.** Last/open/high/low price and volume, plus a bounded 200-trade ring buffer, tracked per symbol and exposed via `ListSymbols`/`GetTradeHistory` - drives the web UI's markets list and seeds its price chart on open.
 - **Randomized order sizes.** Bots submit sizes jittered roughly ±50% around a configured base instead of always the exact same quantity, so the book (and the depth ladder) looks like real activity instead of uniform blocks.
 - **One-command demo (`make simulate`).** Registers twelve markets (six spot equities, a futures contract on each) and launches the server, web UI, and a full fleet of bots trading all of them - the fastest way to actually look at the thing running.
+- **Benchmark coverage and a tick-array price index.** Benchmarks now also cover `Cancel`, concurrent multi-symbol load through `Exchange`, and a full gRPC `SubmitOrder` round-trip, not just direct `Submit`. `BookSide`'s sorted-slice-plus-binary-search price index was replaced with a dense tick array (levels indexed directly by price, capped at a fixed maximum tick to bound memory - the same role a price collar plays on a real exchange), tracking the current best price directly instead of searching for it. Benchmarked before/after with a wide, 100,000-tick price spread: `Cancel` dropped from ~770ns to ~110ns/op.
 
 ## Planned
 
-- **Performance pass.** Benchmarks exist for `Submit` (direct, and through `Engine`'s channel); still open: broader coverage (`Cancel`, multi-symbol `Exchange`, gRPC round-trip), a tick-array price index (replacing the sorted-slice-plus-binary-search index), and object pooling to reduce GC pressure under sustained load.
+- **Object pooling** to reduce GC pressure under sustained load.
 
 ## Later - separate projects, sequenced one at a time
 

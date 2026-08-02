@@ -111,6 +111,21 @@ func TestBookSide_DepthWithNegativeNReturnsEmptySliceInsteadOfPanicking(t *testi
 	}
 }
 
+func TestBookSide_ScansOverGapsBetweenWidelySpacedLevels(t *testing.T) {
+	bs := NewBookSide(types.Sell)
+	bs.GetOrCreateLevel(10).Add(&types.Order{ID: 1, Remaining: 1})
+	bs.GetOrCreateLevel(5000).Add(&types.Order{ID: 2, Remaining: 2})
+
+	bs.RemoveLevel(10)
+
+	if got := bs.Best(); got == nil || got.Price() != 5000 {
+		t.Fatalf("Best() after removing the near level = %v, want price 5000", got)
+	}
+	if got := bs.Depth(10); len(got) != 1 || got[0].Price != 5000 {
+		t.Fatalf("Depth(10) = %+v, want a single level at price 5000", got)
+	}
+}
+
 func TestBookSide_RemoveNonExistentIsNoop(t *testing.T) {
 	bs := NewBookSide(types.Buy)
 	bs.GetOrCreateLevel(100)

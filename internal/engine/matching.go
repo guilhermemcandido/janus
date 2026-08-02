@@ -13,6 +13,11 @@ func (ob *OrderBook) Submit(order *types.Order) ([]types.Trade, error) {
 	if order.Type == types.Limit && order.Price <= 0 {
 		return nil, ErrInvalidPrice
 	}
+	// Checked upfront, even though a marketable order this far out would never actually need to
+	// rest, so a rejection never happens after trades have already executed.
+	if order.Type == types.Limit && order.Price > maxTickPrice {
+		return nil, ErrPriceOutOfRange
+	}
 
 	order.ID = ob.nextSeq()
 
