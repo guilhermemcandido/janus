@@ -77,6 +77,39 @@ func BenchmarkEngineCancel(b *testing.B) {
 	}
 }
 
+// BenchmarkEngineSubmitConcurrent measures Submit against one Engine under concurrent load from many
+// goroutines, unlike BenchmarkEngineSubmit's single caller waiting for each reply.
+func BenchmarkEngineSubmitConcurrent(b *testing.B) {
+	e := NewEngine(NewOrderBook("BENCH"))
+	go e.Run()
+	defer e.Stop()
+
+	b.ResetTimer()
+	b.RunParallel(func(p *testing.PB) {
+		rng := benchRand()
+		for p.Next() {
+			e.Submit(randomOrder(rng, "BENCH"))
+		}
+	})
+}
+
+// BenchmarkEngineCancelConcurrent measures Cancel against one Engine under concurrent load, each
+// goroutine cancelling its own pre-submitted resting order claimed via an atomic counter.
+func BenchmarkEngineCancelConcurrent(b *testing.B) {
+	e := NewEngine(NewOrderBook("BENCH"))
+	go e.Run()
+	defer e.Stop()
+	orders := restingBuyOrders(b.N, func(o *types.Order) { e.Submit(o) })
+
+	var next atomic.Int64
+	b.ResetTimer()
+	b.RunParallel(func(p *testing.PB) {
+		for p.Next() {
+			e.Cancel(orders[next.Add(1)-1].ID)
+		}
+	})
+}
+
 // benchRandSource hands out a distinct, deterministic PCG seed per call so parallel benchmark
 // goroutines each get their own *rand.Rand without racing on a shared one.
 var benchRandCounter atomic.Uint64
