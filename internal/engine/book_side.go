@@ -28,9 +28,8 @@ func (bs *BookSide) better(a, b int64) bool {
 	return a < b
 }
 
-// GetOrCreateLevel returns the PriceLevel at price, inserting it into the tick array if it's new.
-// Callers must have already validated price against maxTickPrice (Submit does, for any order that
-// can reach here) - the tick array itself just trusts it and grows to fit.
+// GetOrCreateLevel returns the PriceLevel at price, inserting it if it's new. Callers must already
+// validate price against maxTickPrice (Submit does) - this just trusts it and grows.
 func (bs *BookSide) GetOrCreateLevel(price int64) *PriceLevel {
 	if pl := bs.tick.get(price); pl != nil {
 		return pl
@@ -45,7 +44,7 @@ func (bs *BookSide) GetOrCreateLevel(price int64) *PriceLevel {
 }
 
 // newPriceLevel reuses an emptied level from the freelist when one's available, avoiding a fresh
-// container/list.List and index map for what's typically a price level being refilled after a fill.
+// index map for what's typically a price level being refilled after a fill.
 func (bs *BookSide) newPriceLevel(price int64) *PriceLevel {
 	if n := len(bs.free); n > 0 {
 		pl := bs.free[n-1]

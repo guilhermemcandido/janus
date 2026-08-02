@@ -105,3 +105,21 @@ func TestPriceLevel_EmptyLevel(t *testing.T) {
 		t.Fatalf("PopFront() on empty level = %v, want nil", got)
 	}
 }
+
+func TestPriceLevel_ReusesFreedNodesAcrossAddRemove(t *testing.T) {
+	pl := NewPriceLevel(100)
+	pl.Add(&types.Order{ID: 1})
+	pl.Remove(1)
+	pl.Add(&types.Order{ID: 2})
+	pl.Add(&types.Order{ID: 3})
+
+	for _, want := range []uint64{2, 3} {
+		got := pl.PopFront()
+		if got == nil || got.ID != want {
+			t.Fatalf("PopFront() = %v, want order %d", got, want)
+		}
+	}
+	if !pl.IsEmpty() {
+		t.Fatalf("expected level empty after popping all orders")
+	}
+}
