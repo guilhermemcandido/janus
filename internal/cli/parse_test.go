@@ -75,6 +75,23 @@ func TestParse_BookRejectsNegativeDepth(t *testing.T) {
 	}
 }
 
+func TestParse_Register(t *testing.T) {
+	cmd, err := Parse("register Apple Inc. spot equity")
+	if err != nil {
+		t.Fatalf("Parse returned unexpected error: %v", err)
+	}
+	want := Command{Kind: Register, Description: "Apple Inc. spot equity"}
+	if cmd != want {
+		t.Fatalf("Parse(%q) = %+v, want %+v", "register Apple Inc. spot equity", cmd, want)
+	}
+}
+
+func TestParse_RegisterRequiresDescription(t *testing.T) {
+	if _, err := Parse("register"); err == nil {
+		t.Fatalf("Parse(%q) expected an error, got none", "register")
+	}
+}
+
 func TestParse_WatchHelpQuit(t *testing.T) {
 	cases := map[string]Kind{
 		"watch": Watch,

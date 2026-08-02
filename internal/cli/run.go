@@ -52,6 +52,8 @@ func Exec(ctx context.Context, c *client.Client, symbol string, cmd Command, out
 		execBook(ctx, c, symbol, cmd, out)
 	case Watch:
 		execWatch(ctx, c, symbol, out)
+	case Register:
+		execRegister(ctx, c, symbol, cmd, out)
 	}
 	return false
 }
@@ -84,6 +86,15 @@ func execBook(ctx context.Context, c *client.Client, symbol string, cmd Command,
 		return
 	}
 	printBook(out, book)
+}
+
+func execRegister(ctx context.Context, c *client.Client, symbol string, cmd Command, out io.Writer) {
+	market, err := c.RegisterMarket(ctx, symbol, cmd.Description)
+	if err != nil {
+		fmt.Fprintln(out, "error:", err)
+		return
+	}
+	fmt.Fprintf(out, "registered %s: %s\n", market.Symbol, market.Description)
 }
 
 func execWatch(ctx context.Context, c *client.Client, symbol string, out io.Writer) {

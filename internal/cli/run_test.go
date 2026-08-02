@@ -51,6 +51,7 @@ func TestRun_SubmitMatchAndBook(t *testing.T) {
 	c := newTestClient(t)
 
 	script := strings.NewReader(strings.Join([]string{
+		"register Apple Inc.",
 		"sell 50 @ 100",
 		"buy 20 @ 100",
 		"book",
@@ -78,6 +79,7 @@ func TestRun_CancelOrder(t *testing.T) {
 	c := newTestClient(t)
 
 	script := strings.NewReader(strings.Join([]string{
+		"register Apple Inc.",
 		"sell 50 @ 100",
 		"cancel 1",
 		"quit",
@@ -97,6 +99,7 @@ func TestRun_UnknownCommandReportsErrorAndContinues(t *testing.T) {
 	c := newTestClient(t)
 
 	script := strings.NewReader(strings.Join([]string{
+		"register Apple Inc.",
 		"frobnicate",
 		"book",
 		"quit",

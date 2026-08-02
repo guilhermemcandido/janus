@@ -40,6 +40,7 @@ func printBook(out io.Writer, book *client.BookSnapshot) {
 // PrintHelp writes the command grammar to out.
 func PrintHelp(out io.Writer) {
 	fmt.Fprintln(out, `Commands:
+  register <description>  list this symbol on the exchange, so it can be traded
   buy <qty> @ <price>     submit a limit buy order
   sell <qty> @ <price>    submit a limit sell order
   buy <qty> market        submit a market buy order

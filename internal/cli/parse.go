@@ -16,19 +16,21 @@ const (
 	Cancel
 	Book
 	Watch
+	Register
 	Help
 	Quit
 )
 
 // Command is one parsed line of CLI input.
 type Command struct {
-	Kind     Kind
-	Side     client.Side
-	Type     client.OrderType
-	Price    int64
-	Quantity uint64
-	OrderID  uint64
-	Depth    int
+	Kind        Kind
+	Side        client.Side
+	Type        client.OrderType
+	Price       int64
+	Quantity    uint64
+	OrderID     uint64
+	Depth       int
+	Description string
 }
 
 // Parse turns one line of input into a Command.
@@ -47,6 +49,8 @@ func Parse(line string) (Command, error) {
 		return parseBook(fields)
 	case "watch":
 		return Command{Kind: Watch}, nil
+	case "register":
+		return parseRegister(fields)
 	case "help":
 		return Command{Kind: Help}, nil
 	case "quit", "exit":
@@ -94,6 +98,13 @@ func parseCancel(fields []string) (Command, error) {
 		return Command{}, fmt.Errorf("invalid order id %q: %w", fields[1], err)
 	}
 	return Command{Kind: Cancel, OrderID: id}, nil
+}
+
+func parseRegister(fields []string) (Command, error) {
+	if len(fields) < 2 {
+		return Command{}, fmt.Errorf("usage: register <description>")
+	}
+	return Command{Kind: Register, Description: strings.Join(fields[1:], " ")}, nil
 }
 
 func parseBook(fields []string) (Command, error) {
