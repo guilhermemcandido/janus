@@ -35,6 +35,25 @@ func TestBookSide_GetOrCreateLevelReturnsSameInstance(t *testing.T) {
 	}
 }
 
+func TestBookSide_ReusesRemovedLevelWithoutLeakingOldOrders(t *testing.T) {
+	bs := NewBookSide(types.Buy)
+	first := bs.GetOrCreateLevel(100)
+	first.Add(&types.Order{ID: 1, Remaining: 10})
+	bs.RemoveLevel(100)
+
+	second := bs.GetOrCreateLevel(100)
+
+	if second != first {
+		t.Fatalf("GetOrCreateLevel(100) after removal allocated a new level instead of reusing the freed one")
+	}
+	if !second.IsEmpty() {
+		t.Fatalf("reused level still has %d orders from before it was removed, want empty", second.Len())
+	}
+	if _, ok := second.index[1]; ok {
+		t.Fatalf("reused level's index still has order 1 from before it was removed")
+	}
+}
+
 func TestBookSide_RemoveLevelUpdatesBest(t *testing.T) {
 	bs := NewBookSide(types.Buy)
 	bs.GetOrCreateLevel(100)

@@ -2,6 +2,10 @@ package engine
 
 import "github.com/guilhermemcandido/janus/internal/types"
 
+// maxFreeLevels bounds how many emptied PriceLevels a BookSide holds onto for reuse, so a market
+// that keeps drifting to new prices forever can't grow this into an unbounded memory leak.
+const maxFreeLevels = 1024
+
 // BookSide holds one side of the book (all bids or all asks) in a tickArray, tracking the current
 // best price directly so Best/GetOrCreateLevel/RemoveLevel don't need to search the common case.
 type BookSide struct {
@@ -9,6 +13,7 @@ type BookSide struct {
 	tick  tickArray
 	best  int64 // meaningful only while count > 0
 	count int
+	free  []*PriceLevel // emptied levels ready for reuse; safe unsynchronized since only the owning Engine's goroutine ever touches a BookSide
 }
 
 func NewBookSide(side types.Side) *BookSide {
@@ -30,7 +35,7 @@ func (bs *BookSide) GetOrCreateLevel(price int64) *PriceLevel {
 	if pl := bs.tick.get(price); pl != nil {
 		return pl
 	}
-	pl := NewPriceLevel(price)
+	pl := bs.newPriceLevel(price)
 	bs.tick.set(price, pl)
 	bs.count++
 	if bs.count == 1 || bs.better(price, bs.best) {
@@ -39,23 +44,39 @@ func (bs *BookSide) GetOrCreateLevel(price int64) *PriceLevel {
 	return pl
 }
 
+// newPriceLevel reuses an emptied level from the freelist when one's available, avoiding a fresh
+// container/list.List and index map for what's typically a price level being refilled after a fill.
+func (bs *BookSide) newPriceLevel(price int64) *PriceLevel {
+	if n := len(bs.free); n > 0 {
+		pl := bs.free[n-1]
+		bs.free = bs.free[:n-1]
+		pl.reset(price)
+		return pl
+	}
+	return NewPriceLevel(price)
+}
+
 // RemoveLevel deletes a price level from the tick array, scanning toward the next occupied price
-// if it was the best.
+// if it was the best, and returns it to the freelist for reuse.
 func (bs *BookSide) RemoveLevel(price int64) {
-	if bs.tick.get(price) == nil {
+	pl := bs.tick.get(price)
+	if pl == nil {
 		return
 	}
 	bs.tick.delete(price)
 	bs.count--
 
-	if price != bs.best {
-		return
+	if price == bs.best {
+		if bs.count == 0 {
+			bs.best = 0
+		} else {
+			bs.best = bs.nextOccupied(price)
+		}
 	}
-	if bs.count == 0 {
-		bs.best = 0
-		return
+
+	if len(bs.free) < maxFreeLevels {
+		bs.free = append(bs.free, pl)
 	}
-	bs.best = bs.nextOccupied(price)
 }
 
 // nextOccupied scans away from price, toward worse prices, for the next occupied level. Bounded by

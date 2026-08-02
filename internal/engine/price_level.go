@@ -25,6 +25,14 @@ func (pl *PriceLevel) Price() int64 {
 	return pl.price
 }
 
+// reset reinitializes pl for reuse at a new price, keeping its backing list and index map instead
+// of allocating fresh ones - see BookSide's freelist.
+func (pl *PriceLevel) reset(price int64) {
+	pl.price = price
+	pl.orders.Init()
+	clear(pl.index)
+}
+
 // Add appends an order to the back of the queue.
 func (pl *PriceLevel) Add(o *types.Order) {
 	el := pl.orders.PushBack(o)
