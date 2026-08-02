@@ -9,6 +9,9 @@ type OrderBook struct {
 	asks   *BookSide
 	orders map[uint64]*types.Order // currently resting orders, by ID
 	seq    uint64
+
+	stats   types.MarketStats
+	history tradeRing
 }
 
 func NewOrderBook(symbol string) *OrderBook {
@@ -17,6 +20,7 @@ func NewOrderBook(symbol string) *OrderBook {
 		bids:   NewBookSide(types.Buy),
 		asks:   NewBookSide(types.Sell),
 		orders: make(map[uint64]*types.Order),
+		stats:  types.MarketStats{Symbol: symbol},
 	}
 }
 
@@ -41,6 +45,16 @@ func (ob *OrderBook) Depth(n int) types.BookSnapshot {
 		Bids:   ob.bids.Depth(n),
 		Asks:   ob.asks.Depth(n),
 	}
+}
+
+// Stats returns a snapshot of trading activity for this symbol since the engine started.
+func (ob *OrderBook) Stats() types.MarketStats {
+	return ob.stats
+}
+
+// History returns the most recent trades for this symbol, oldest first.
+func (ob *OrderBook) History() []types.Trade {
+	return ob.history.recent()
 }
 
 // RestingOrders returns every currently resting order, best price first and FIFO within each level, plus the sequence counter.

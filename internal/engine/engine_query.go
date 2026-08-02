@@ -3,11 +3,14 @@ package engine
 import "github.com/guilhermemcandido/janus/internal/types"
 
 type bestBidCommand struct {
-	reply chan *PriceLevel
+	reply chan *types.PriceLevelSnapshot
 }
 
-func (e *Engine) BestBid() *PriceLevel {
-	reply := make(chan *PriceLevel, 1)
+// BestBid returns an immutable snapshot of the best bid, or nil if the book has none. A snapshot,
+// not the live *PriceLevel, since that object keeps mutating on the engine's own goroutine after
+// this call returns and callers here run on a different goroutine.
+func (e *Engine) BestBid() *types.PriceLevelSnapshot {
+	reply := make(chan *types.PriceLevelSnapshot, 1)
 	r, err := call(e, bestBidCommand{reply: reply}, reply)
 	if err != nil {
 		return nil
@@ -16,11 +19,12 @@ func (e *Engine) BestBid() *PriceLevel {
 }
 
 type bestAskCommand struct {
-	reply chan *PriceLevel
+	reply chan *types.PriceLevelSnapshot
 }
 
-func (e *Engine) BestAsk() *PriceLevel {
-	reply := make(chan *PriceLevel, 1)
+// BestAsk returns an immutable snapshot of the best ask, or nil if the book has none.
+func (e *Engine) BestAsk() *types.PriceLevelSnapshot {
+	reply := make(chan *types.PriceLevelSnapshot, 1)
 	r, err := call(e, bestAskCommand{reply: reply}, reply)
 	if err != nil {
 		return nil
@@ -58,6 +62,34 @@ func (e *Engine) Depth(n int) types.BookSnapshot {
 	r, err := call(e, depthCommand{n: n, reply: reply}, reply)
 	if err != nil {
 		return types.BookSnapshot{Symbol: e.Symbol()}
+	}
+	return r
+}
+
+type statsCommand struct {
+	reply chan types.MarketStats
+}
+
+// Stats returns a snapshot of trading activity for this symbol since the engine started.
+func (e *Engine) Stats() types.MarketStats {
+	reply := make(chan types.MarketStats, 1)
+	r, err := call(e, statsCommand{reply: reply}, reply)
+	if err != nil {
+		return types.MarketStats{Symbol: e.Symbol()}
+	}
+	return r
+}
+
+type tradeHistoryCommand struct {
+	reply chan []types.Trade
+}
+
+// TradeHistory returns the most recent trades for this symbol, oldest first.
+func (e *Engine) TradeHistory() []types.Trade {
+	reply := make(chan []types.Trade, 1)
+	r, err := call(e, tradeHistoryCommand{reply: reply}, reply)
+	if err != nil {
+		return nil
 	}
 	return r
 }

@@ -48,14 +48,18 @@ func (e *Engine) handle(msg any) {
 		o, err := e.book.Cancel(cmd.orderID)
 		cmd.reply <- cancelResult{order: o, err: err}
 	case bestBidCommand:
-		cmd.reply <- e.book.BestBid()
+		cmd.reply <- snapshotLevel(e.book.BestBid())
 	case bestAskCommand:
-		cmd.reply <- e.book.BestAsk()
+		cmd.reply <- snapshotLevel(e.book.BestAsk())
 	case orderCommand:
 		o, found := e.book.Order(cmd.orderID)
 		cmd.reply <- orderResult{order: o, found: found}
 	case depthCommand:
 		cmd.reply <- e.book.Depth(cmd.n)
+	case statsCommand:
+		cmd.reply <- e.book.Stats()
+	case tradeHistoryCommand:
+		cmd.reply <- e.book.History()
 	case subscribeCommand:
 		ch := make(chan types.Trade, 32)
 		id := e.subs.add(ch)
@@ -97,4 +101,13 @@ func call[R any](e *Engine, msg any, reply chan R) (R, error) {
 
 func (e *Engine) Symbol() string {
 	return e.book.Symbol
+}
+
+// snapshotLevel copies pl's price and quantity while still on the engine's own goroutine, since
+// pl itself keeps mutating after this call and must never be handed to another goroutine.
+func snapshotLevel(pl *PriceLevel) *types.PriceLevelSnapshot {
+	if pl == nil {
+		return nil
+	}
+	return &types.PriceLevelSnapshot{Price: pl.Price(), Quantity: pl.TotalQuantity()}
 }

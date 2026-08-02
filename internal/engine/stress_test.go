@@ -107,7 +107,7 @@ func TestExchange_ConcurrentMultiSymbolStress(t *testing.T) {
 			rng := rand.New(rand.NewPCG(uint64(seed), uint64(seed)+1))
 			for i := 0; i < opsPerGoroutine; i++ {
 				symbol := symbols[rng.IntN(len(symbols))]
-				eng := ex.GetOrCreateEngine(symbol)
+				eng := ex.Register(symbol, symbol)
 
 				order := randomOrder(rng, symbol)
 				trades, err := eng.Submit(order)
@@ -129,7 +129,7 @@ func TestExchange_ConcurrentMultiSymbolStress(t *testing.T) {
 	wg.Wait()
 
 	for _, symbol := range symbols {
-		eng := ex.GetOrCreateEngine(symbol)
+		eng := ex.Register(symbol, symbol)
 		for _, order := range orders[symbol] {
 			want := order.Quantity - filled[symbol][order.ID]
 			got := currentRemaining(eng.Order, order)

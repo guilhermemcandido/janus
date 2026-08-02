@@ -37,7 +37,29 @@ func (ob *OrderBook) Submit(order *types.Order) ([]types.Trade, error) {
 		ob.rest(order)
 	}
 
+	ob.recordTrades(trades)
 	return trades, nil
+}
+
+// recordTrades updates market stats and the trade history ring for a batch of newly matched trades.
+func (ob *OrderBook) recordTrades(trades []types.Trade) {
+	for _, tr := range trades {
+		if !ob.stats.HasTraded {
+			ob.stats.HasTraded = true
+			ob.stats.OpenPrice = tr.Price
+			ob.stats.High = tr.Price
+			ob.stats.Low = tr.Price
+		}
+		ob.stats.LastPrice = tr.Price
+		if tr.Price > ob.stats.High {
+			ob.stats.High = tr.Price
+		}
+		if tr.Price < ob.stats.Low {
+			ob.stats.Low = tr.Price
+		}
+		ob.stats.Volume += tr.Quantity
+		ob.history.add(tr)
+	}
 }
 
 // matchLevel fills taker against level's FIFO queue until either is exhausted.

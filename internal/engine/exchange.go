@@ -5,21 +5,27 @@ import (
 	"sync"
 )
 
-// Exchange holds one Engine per traded symbol, creating each (and its OrderBook and goroutine) on first use.
+// Exchange holds one Engine per registered symbol, plus the description each was listed with.
 type Exchange struct {
-	mu      sync.Mutex
-	engines map[string]*Engine
+	mu           sync.Mutex
+	engines      map[string]*Engine
+	descriptions map[string]string
 
 	// Epoch is picked once per process so clients can detect that the exchange restarted and lost all state.
 	Epoch uint64
 }
 
 func NewExchange() *Exchange {
-	return &Exchange{engines: make(map[string]*Engine), Epoch: rand.Uint64()}
+	return &Exchange{
+		engines:      make(map[string]*Engine),
+		descriptions: make(map[string]string),
+		Epoch:        rand.Uint64(),
+	}
 }
 
-// GetOrCreateEngine returns the Engine for symbol, starting its goroutine the first time it's requested.
-func (e *Exchange) GetOrCreateEngine(symbol string) *Engine {
+// Register lists symbol on the exchange, starting its Engine goroutine the first time it's called.
+// Calling it again for an already-registered symbol is a no-op; the first description wins.
+func (e *Exchange) Register(symbol, description string) *Engine {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -29,10 +35,26 @@ func (e *Exchange) GetOrCreateEngine(symbol string) *Engine {
 	eng := NewEngine(NewOrderBook(symbol))
 	go eng.Run()
 	e.engines[symbol] = eng
+	e.descriptions[symbol] = description
 	return eng
 }
 
-// Symbols returns every symbol with an active Engine.
+// Lookup returns the Engine for a symbol that has already been registered.
+func (e *Exchange) Lookup(symbol string) (*Engine, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	eng, ok := e.engines[symbol]
+	return eng, ok
+}
+
+// Description returns the description symbol was registered with, or "" if it isn't registered.
+func (e *Exchange) Description(symbol string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.descriptions[symbol]
+}
+
+// Symbols returns every registered symbol.
 func (e *Exchange) Symbols() []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()

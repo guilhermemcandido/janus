@@ -65,7 +65,7 @@ func TestEngine_BestBid(t *testing.T) {
 	}
 
 	best := e.BestBid()
-	if best == nil || best.Price() != 100 {
+	if best == nil || best.Price != 100 {
 		t.Fatalf("BestBid() = %v, want price 100", best)
 	}
 
