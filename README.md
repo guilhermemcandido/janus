@@ -19,10 +19,10 @@ flowchart LR
     Noise --> AAPLF
     Arbitrage -.->|watches spread| AAPL
     Arbitrage -.->|watches spread| AAPLF
-    You[you, via the CLI] --> AAPL
-    You --> AAPLF
-    Browser[you, in a browser] -->|WebSocket| AAPL
-    Browser -->|WebSocket| AAPLF
+    CLI --> AAPL
+    CLI --> AAPLF
+    Web -->|WebSocket| AAPL
+    Web -->|WebSocket| AAPLF
 ```
 
 Details on how each piece works, the concurrency model, and full diagrams live in **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
@@ -82,7 +82,7 @@ make run-web   ARGS="-addr localhost:50051"  # web UI at :8080
 
 ## Performance
 
-Found and fixed with `pprof`/benchmarks, not guessed. Full story in [ARCHITECTURE.md](docs/ARCHITECTURE.md#performance).
+Bottlenecks were identified using `pprof` and confirmed with benchmarks. Full details are documented in [ARCHITECTURE.md](docs/ARCHITECTURE.md#performance).
 
 | Change | Before | After |
 | --- | --- | --- |
