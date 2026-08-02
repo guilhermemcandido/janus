@@ -19,7 +19,7 @@ import (
 
 const bufSize = 1024 * 1024
 
-func newTestClient(t *testing.T) pb.ExchangeClient {
+func newTestClient(t testing.TB) pb.ExchangeClient {
 	t.Helper()
 
 	lis := bufconn.Listen(bufSize)
@@ -51,7 +51,7 @@ func newTestClient(t *testing.T) pb.ExchangeClient {
 	return pb.NewExchangeClient(conn)
 }
 
-func registerMarket(t *testing.T, client pb.ExchangeClient, symbol, description string) {
+func registerMarket(t testing.TB, client pb.ExchangeClient, symbol, description string) {
 	t.Helper()
 	if _, err := client.RegisterMarket(context.Background(), &pb.RegisterMarketRequest{
 		Symbol: symbol, Description: description,
