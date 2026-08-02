@@ -152,7 +152,7 @@ classDiagram
 
 **`OrderBook` is protected by single-goroutine ownership, not a lock.** Once wrapped in an `Engine`, the *only* goroutine that ever calls `Submit`/`Cancel` - and therefore the only one that ever touches `PriceLevel.index`, `BookSide.tick`/`free`, or `OrderBook.orders` - is `Engine.Run()`'s own goroutine. Every other caller sends a command over a channel and blocks for the reply. This is Go's "share memory by communicating": instead of locking those maps, the code structurally guarantees only one goroutine can ever reach them, so there's nothing to lock.
 
-**`Exchange` is protected by a plain `sync.Mutex` instead**, because it's a genuinely different shape of problem. `GetOrCreateEngine`'s critical section is just a map lookup (and, once per symbol, an insert plus spawning a goroutine) - nanoseconds of work, called very frequently, with no real logic to serialize. Routing that through a dedicated channel and goroutine the way `OrderBook` does would be pure overhead for no benefit. Neither approach is "more correct" in general - the right synchronization primitive follows from the shape of the critical section it's protecting.
+**`Exchange` is protected by a plain `sync.Mutex` instead**, because it's a genuinely different shape of problem. `Lookup`'s critical section is just a map read; `Register`'s is a map insert plus, the first time for a given symbol, spawning a goroutine - both nanoseconds of work, called very frequently, with no real logic to serialize. Routing that through a dedicated channel and goroutine the way `OrderBook` does would be pure overhead for no benefit. Neither approach is "more correct" in general - the right synchronization primitive follows from the shape of the critical section it's protecting.
 
 **Shutdown doesn't close the channel callers send on.** `inbox` has many senders (every `Submit`/`Cancel`/etc. call) and exactly one closer, and sending on a closed channel panics regardless of who closed it. Instead, `Stop()` closes a separate `done` channel that every public method also watches via `select` alongside its actual send/receive - a call racing with shutdown either completes normally or returns `ErrEngineStopped`, but never panics. `Stop()` itself is wrapped in `sync.Once` since closing an already-closed channel is a separate panic.
 
@@ -174,7 +174,7 @@ classDiagram
 
 ## gRPC API
 
-The service is defined in `proto/janus.proto` (source of truth) and generated into `internal/api/proto` via `protoc` - nothing there is hand-edited (`make proto` regenerates it). `internal/api/server.go` implements the service by routing each request to the right `Engine` via `Exchange.GetOrCreateEngine(symbol)`.
+The service is defined in `proto/janus.proto` (source of truth) and generated into `internal/api/proto` via `protoc` - nothing there is hand-edited (`make proto` regenerates it). `internal/api/server.go` implements the service by routing each request to the right `Engine` via `Exchange.Lookup(symbol)` - or `Exchange.Register`, for `RegisterMarket` itself.
 
 **Domain errors map to gRPC status codes.** `ErrInvalidQuantity`/`ErrInvalidPrice`/`ErrSymbolMismatch` become `InvalidArgument`, `ErrOrderNotFound` becomes `NotFound`, `ErrEngineStopped` becomes `Unavailable` - a client gets a structured status it can branch on instead of parsing an error string.
 
@@ -199,16 +199,21 @@ sequenceDiagram
     participant Book as OrderBook
 
     Caller->>Server: SubmitOrder(symbol, side, price, qty)
-    Server->>Exchange: GetOrCreateEngine(symbol)
-    Exchange-->>Server: Engine (created on first use)
-    Server->>Engine: submitCommand{order, reply}
-    Engine->>Book: Submit(order)
-    Book-->>Engine: trades, error
-    Engine-->>Server: reply (only goroutine touching Book)
-    Server-->>Caller: SubmitOrderResponse{order, trades}
+    Server->>Exchange: Lookup(symbol)
+    alt symbol not registered
+        Exchange-->>Server: not found
+        Server-->>Caller: NotFound
+    else symbol registered
+        Exchange-->>Server: Engine
+        Server->>Engine: submitCommand{order, reply}
+        Engine->>Book: Submit(order)
+        Book-->>Engine: trades, error
+        Engine-->>Server: reply (only goroutine touching Book)
+        Server-->>Caller: SubmitOrderResponse{order, trades}
+    end
 ```
 
-`CancelOrder` and `GetOrderBook` follow the same shape with a different command type; `SubscribeTrades` is different enough to warrant its own diagram below.
+A symbol has to be registered first - see [Market registration](#market-registration) - `Lookup` never creates an `Engine`. `CancelOrder` and `GetOrderBook` follow the same shape with a different command type; `SubscribeTrades` is different enough to warrant its own diagram below.
 
 ## Trade subscription and reconnection
 
@@ -285,7 +290,7 @@ sequenceDiagram
     Bridge-->>Browser: {"type":"trade","trades":[...]}
 ```
 
-**`internal/websocket` is a hand-rolled RFC 6455 implementation, not a library** - understanding the protocol is part of what this project demonstrates. It has zero knowledge of Janus: just the handshake (`Sec-WebSocket-Accept`), frame encode/decode, masking, ping/pong, and fragmentation, kept as a sibling package rather than nested under `internal/web` since nothing about it is web-specific.
+**`internal/websocket` is a hand-rolled RFC 6455 implementation, not a library.** It has zero knowledge of Janus: just the handshake (`Sec-WebSocket-Accept`), frame encode/decode, masking, ping/pong, and fragmentation, kept as a sibling package rather than nested under `internal/web` since nothing about it is web-specific.
 
 **`internal/web` is the layer that knows about Janus.** It translates a small JSON schema (`submit`/`cancel`/`subscribe`/`unsubscribe` from the browser; `ack`/`trade`/`book`/`error` back) into `pkg/client` calls - the same library the CLI and every bot already use, so the browser is architecturally just another consumer, never touching the engine directly.
 
@@ -313,7 +318,7 @@ Vanilla JS/HTML/CSS, no framework, no build step - embedded into the `cmd/web` b
 
 ## Bots
 
-Five independent programs, each a standalone `pkg/client` consumer, trading against each other and any human via the CLI to create organic price movement - this is what makes Janus a market instead of just an order book with an API in front of it.
+Five independent programs, each a standalone `pkg/client` consumer, trading against each other and any human via the CLI to create organic price movement.
 
 ```mermaid
 classDiagram

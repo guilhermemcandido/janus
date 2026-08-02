@@ -29,7 +29,7 @@ Ongoing and planned work for Janus. See [README.md](README.md) for the project p
 
 ## Later - separate projects, sequenced one at a time
 
-Not part of this repo. Deliberate focus choice: finish Janus completely (all bots, then the UI) before starting either.
+Not part of this repo.
 
 - **Rust port** of just the core matching engine (`OrderBook`/`PriceLevel`/`BookSide`/`Submit`/`Cancel`, no gRPC/bots/CLI layer) - a new repo, benchmarked against Go to demonstrate the GC-pause-vs-no-GC latency difference.
-- **OCaml port** (optional, lower priority) - same scope as the Rust port, if pursued at all. OCaml's trading-industry footprint is concentrated at Jane Street specifically, not an industry-wide expectation, so this is a nice-to-have rather than a gap to close.
+- **OCaml port** (optional, lower priority) - same scope as the Rust port, if pursued at all.

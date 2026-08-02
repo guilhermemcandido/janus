@@ -1,6 +1,6 @@
 # Janus
 
-A simulated financial market, written in Go - not just a matching engine, but a living market. An in-memory exchange sits behind a gRPC API, and independent bot programs (market makers, a hedger, a noise trader, an arbitrage bot) trade against each other over that same API, so prices move from emergent activity rather than only from whatever a human submits by hand. Watch it happen live in a browser, or drive it yourself from a CLI.
+A simulated financial market, written in Go. An in-memory exchange sits behind a gRPC API, and independent bot programs (market makers, a hedger, a noise trader, an arbitrage bot) trade against each other over that same API, driving price movement from their own activity rather than only from orders submitted by hand. Watch it live in a browser, or trade against it yourself from a CLI.
 
 ## How it works
 
