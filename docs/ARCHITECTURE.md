@@ -1,6 +1,6 @@
 # Architecture
 
-Design decisions, trade-offs, and diagrams for Janus. For what the project is and how to run it, see [README.md](README.md). For what's left, see [TODO.md](TODO.md).
+Design decisions, trade-offs, and diagrams for Janus. For what the project is and how to run it, see [README.md](../README.md). For what's left, see [TODO.md](../TODO.md).
 
 ## Contents
 
@@ -140,39 +140,39 @@ classDiagram
 
 ## Market registration
 
-**A symbol has to be listed before anything can happen to it.** `Exchange.Register(symbol, description)` is the only thing that creates an `Engine`; every other entry point — `SubmitOrder`, `CancelOrder`, `GetOrderBook`, `SubscribeTrades`, `GetTradeHistory` — calls `Exchange.Lookup(symbol)` instead, which never creates one, and the API layer returns `NotFound` if it comes up empty. This replaced an earlier design where the first order for any symbol silently created it.
+**A symbol has to be listed before anything can happen to it.** `Exchange.Register(symbol, description)` is the only thing that creates an `Engine`; every other entry point - `SubmitOrder`, `CancelOrder`, `GetOrderBook`, `SubscribeTrades`, `GetTradeHistory` - calls `Exchange.Lookup(symbol)` instead, which never creates one, and the API layer returns `NotFound` if it comes up empty. This replaced an earlier design where the first order for any symbol silently created it.
 
-**Nobody but the operator, via the CLI's `register` command, ever calls `Register`.** Bots never register a market themselves — a market-maker unilaterally deciding to list an instrument doesn't match how real exchanges work; listing is an administrative act, participants just trade what's already listed. A bot pointed at an unlisted symbol gets an ordinary `NotFound`, which its existing retry loop already tolerates.
+**Nobody but the operator, via the CLI's `register` command, ever calls `Register`.** Bots never register a market themselves - a market-maker unilaterally deciding to list an instrument doesn't match how real exchanges work; listing is an administrative act, participants just trade what's already listed. A bot pointed at an unlisted symbol gets an ordinary `NotFound`, which its existing retry loop already tolerates.
 
-**`Register` is idempotent.** Calling it again for an already-registered symbol is a no-op — the first description wins. This lets `Restore` (replaying a persisted snapshot) and a re-run of a startup script both call it freely without checking "does this already exist" first.
+**`Register` is idempotent.** Calling it again for an already-registered symbol is a no-op - the first description wins. This lets `Restore` (replaying a persisted snapshot) and a re-run of a startup script both call it freely without checking "does this already exist" first.
 
 ## Concurrency model
 
-**`OrderBook` is protected by single-goroutine ownership, not a lock.** Once wrapped in an `Engine`, the *only* goroutine that ever calls `Submit`/`Cancel` — and therefore the only one that ever touches `PriceLevel.index`, `BookSide.levels`/`prices`, or `OrderBook.orders` — is `Engine.Run()`'s own goroutine. Every other caller sends a command over a channel and blocks for the reply. This is Go's "share memory by communicating": instead of locking those maps, the code structurally guarantees only one goroutine can ever reach them, so there's nothing to lock.
+**`OrderBook` is protected by single-goroutine ownership, not a lock.** Once wrapped in an `Engine`, the *only* goroutine that ever calls `Submit`/`Cancel` - and therefore the only one that ever touches `PriceLevel.index`, `BookSide.levels`/`prices`, or `OrderBook.orders` - is `Engine.Run()`'s own goroutine. Every other caller sends a command over a channel and blocks for the reply. This is Go's "share memory by communicating": instead of locking those maps, the code structurally guarantees only one goroutine can ever reach them, so there's nothing to lock.
 
-**`Exchange` is protected by a plain `sync.Mutex` instead**, because it's a genuinely different shape of problem. `GetOrCreateEngine`'s critical section is just a map lookup (and, once per symbol, an insert plus spawning a goroutine) — nanoseconds of work, called very frequently, with no real logic to serialize. Routing that through a dedicated channel and goroutine the way `OrderBook` does would be pure overhead for no benefit. Neither approach is "more correct" in general — the right synchronization primitive follows from the shape of the critical section it's protecting.
+**`Exchange` is protected by a plain `sync.Mutex` instead**, because it's a genuinely different shape of problem. `GetOrCreateEngine`'s critical section is just a map lookup (and, once per symbol, an insert plus spawning a goroutine) - nanoseconds of work, called very frequently, with no real logic to serialize. Routing that through a dedicated channel and goroutine the way `OrderBook` does would be pure overhead for no benefit. Neither approach is "more correct" in general - the right synchronization primitive follows from the shape of the critical section it's protecting.
 
-**Shutdown doesn't close the channel callers send on.** `inbox` has many senders (every `Submit`/`Cancel`/etc. call) and exactly one closer, and sending on a closed channel panics regardless of who closed it. Instead, `Stop()` closes a separate `done` channel that every public method also watches via `select` alongside its actual send/receive — a call racing with shutdown either completes normally or returns `ErrEngineStopped`, but never panics. `Stop()` itself is wrapped in `sync.Once` since closing an already-closed channel is a separate panic.
+**Shutdown doesn't close the channel callers send on.** `inbox` has many senders (every `Submit`/`Cancel`/etc. call) and exactly one closer, and sending on a closed channel panics regardless of who closed it. Instead, `Stop()` closes a separate `done` channel that every public method also watches via `select` alongside its actual send/receive - a call racing with shutdown either completes normally or returns `ErrEngineStopped`, but never panics. `Stop()` itself is wrapped in `sync.Once` since closing an already-closed channel is a separate panic.
 
-**Trade subscriptions are broadcast, not delivered reliably.** After every `Submit`, `Run` tries to send each resulting trade to every subscriber with a non-blocking `select`/`default` — if a subscriber's buffer is full (or it isn't registered yet), that trade is dropped *for that subscriber* rather than blocking. The alternative (a blocking send) would mean one slow bot could stall matching for every other participant. This mirrors how real market data feeds work: fall behind and you miss messages, you don't get the exchange to wait for you. See [Trade subscription and reconnection](#trade-subscription-and-reconnection) for how the client side copes with this.
+**Trade subscriptions are broadcast, not delivered reliably.** After every `Submit`, `Run` tries to send each resulting trade to every subscriber with a non-blocking `select`/`default` - if a subscriber's buffer is full (or it isn't registered yet), that trade is dropped *for that subscriber* rather than blocking. The alternative (a blocking send) would mean one slow bot could stall matching for every other participant. This mirrors how real market data feeds work: fall behind and you miss messages, you don't get the exchange to wait for you. See [Trade subscription and reconnection](#trade-subscription-and-reconnection) for how the client side copes with this.
 
 **Each Engine command has its own type instead of one shared struct.** `Engine`'s inbox carries `any`, and `Run` dispatches with a type-switch (`submitCommand`, `cancelCommand`, `depthCommand`, ...), each with a reply channel of exactly the type it needs. This started as one shared `result` struct; it grew unwieldy once it reached 7 fields of genuinely different shapes for 8 command kinds that each only used 2-3 of them. A small generic helper (`call[R any]`) keeps the shutdown-safe send/receive logic in one place despite each command having its own reply type.
 
-**`Engine.BestBid`/`BestAsk` return a snapshot, not the live `PriceLevel`.** `BookSide.Best()` returns a pointer into the engine's own map — fine as long as it's only ever read from inside `Run()`'s goroutine, which was true until `ListSymbols` started calling it from the gRPC handler's goroutine while the engine kept mutating that same object on every subsequent order at that price. Found by code review, not a test: nothing exercised `ListSymbols` concurrently with active trading. Fixed with a `types.PriceLevelSnapshot{Price, Quantity}` copied while still on the engine's own goroutine, before the value ever crosses to the caller — the same "share memory by communicating" principle as everything else here, just applied one level down, where a raw pointer had leaked past the channel boundary undetected until a new caller actually exercised it concurrently with trading.
+**`Engine.BestBid`/`BestAsk` return a snapshot, not the live `PriceLevel`.** `BookSide.Best()` returns a pointer into the engine's own map - fine as long as it's only ever read from inside `Run()`'s goroutine, which was true until `ListSymbols` started calling it from the gRPC handler's goroutine while the engine kept mutating that same object on every subsequent order at that price. Found by code review, not a test: nothing exercised `ListSymbols` concurrently with active trading. Fixed with a `types.PriceLevelSnapshot{Price, Quantity}` copied while still on the engine's own goroutine, before the value ever crosses to the caller - the same "share memory by communicating" principle as everything else here, just applied one level down, where a raw pointer had leaked past the channel boundary undetected until a new caller actually exercised it concurrently with trading.
 
 ## gRPC API
 
-The service is defined in `proto/janus.proto` (source of truth) and generated into `internal/api/proto` via `protoc` — nothing there is hand-edited (`make proto` regenerates it). `internal/api/server.go` implements the service by routing each request to the right `Engine` via `Exchange.GetOrCreateEngine(symbol)`.
+The service is defined in `proto/janus.proto` (source of truth) and generated into `internal/api/proto` via `protoc` - nothing there is hand-edited (`make proto` regenerates it). `internal/api/server.go` implements the service by routing each request to the right `Engine` via `Exchange.GetOrCreateEngine(symbol)`.
 
-**Domain errors map to gRPC status codes.** `ErrInvalidQuantity`/`ErrInvalidPrice`/`ErrSymbolMismatch` become `InvalidArgument`, `ErrOrderNotFound` becomes `NotFound`, `ErrEngineStopped` becomes `Unavailable` — a client gets a structured status it can branch on instead of parsing an error string.
+**Domain errors map to gRPC status codes.** `ErrInvalidQuantity`/`ErrInvalidPrice`/`ErrSymbolMismatch` become `InvalidArgument`, `ErrOrderNotFound` becomes `NotFound`, `ErrEngineStopped` becomes `Unavailable` - a client gets a structured status it can branch on instead of parsing an error string.
 
-**`SubscribeTrades` is a server-streaming RPC**, not polling. It sends response headers explicitly (`stream.SendHeader`) the moment it's actually registered with the engine, *before* entering its send loop — closing a real race where a trade fired immediately after subscribing could be silently dropped by the non-blocking broadcast before the server had gotten around to registering. See [Trade subscription and reconnection](#trade-subscription-and-reconnection).
+**`SubscribeTrades` is a server-streaming RPC**, not polling. It sends response headers explicitly (`stream.SendHeader`) the moment it's actually registered with the engine, *before* entering its send loop - closing a real race where a trade fired immediately after subscribing could be silently dropped by the non-blocking broadcast before the server had gotten around to registering. See [Trade subscription and reconnection](#trade-subscription-and-reconnection).
 
-**`Ping` is a lightweight liveness/identity check.** It returns `Epoch`, a random value the `Exchange` picks once at startup. A different epoch than one previously seen is unambiguous proof the exchange restarted and lost all state — something a plain "is the connection alive" check can't tell you, since restarting a process and rebinding to the same port looks identical to a still-alive connection from the outside. The server also registers the standard `grpc.health.v1.Health` service (`google.golang.org/grpc/health`) alongside this — free interoperability with tooling like `grpcurl --health` or Kubernetes-style liveness probes, separate from our own epoch mechanism.
+**`Ping` is a lightweight liveness/identity check.** It returns `Epoch`, a random value the `Exchange` picks once at startup. A different epoch than one previously seen is unambiguous proof the exchange restarted and lost all state - something a plain "is the connection alive" check can't tell you, since restarting a process and rebinding to the same port looks identical to a still-alive connection from the outside. The server also registers the standard `grpc.health.v1.Health` service (`google.golang.org/grpc/health`) alongside this - free interoperability with tooling like `grpcurl --health` or Kubernetes-style liveness probes, separate from our own epoch mechanism.
 
-**`ListSymbols`, `GetTradeHistory`, and `RegisterMarket` round out the API.** `ListSymbols` lists every registered market with its live stats (used to drive the web UI's markets grid); `GetTradeHistory` returns a symbol's recent trades (used to seed its price chart on open); `RegisterMarket` is the sole entry point described in [Market registration](#market-registration). A request for a symbol that isn't registered gets `NotFound` from the API layer itself, before ever reaching an `Engine` — a different source than the engine's own `ErrOrderNotFound`, but deliberately the same status code, since from a caller's perspective both mean "the thing you asked about doesn't exist."
+**`ListSymbols`, `GetTradeHistory`, and `RegisterMarket` round out the API.** `ListSymbols` lists every registered market with its live stats (used to drive the web UI's markets grid); `GetTradeHistory` returns a symbol's recent trades (used to seed its price chart on open); `RegisterMarket` is the sole entry point described in [Market registration](#market-registration). A request for a symbol that isn't registered gets `NotFound` from the API layer itself, before ever reaching an `Engine` - a different source than the engine's own `ErrOrderNotFound`, but deliberately the same status code, since from a caller's perspective both mean "the thing you asked about doesn't exist."
 
-**Unary handlers check `ctx.Err()` before doing any work**, but don't propagate context into `Engine` itself — engine calls complete in hundreds of nanoseconds, far faster than any client could realistically observe and cancel mid-flight.
+**Unary handlers check `ctx.Err()` before doing any work**, but don't propagate context into `Engine` itself - engine calls complete in hundreds of nanoseconds, far faster than any client could realistically observe and cancel mid-flight.
 
 ## Request flow
 
@@ -232,19 +232,19 @@ Two separate mechanisms make this reliable, both covered above: `SendHeader`/`He
 
 ## Go client library (`pkg/client`)
 
-Unlike `internal/api` (the server), this is meant to be imported — by the CLI and by every bot. That's why it lives under `pkg/` instead of `internal/`: consumers talk to the server over the network in any language, but a Go client library specifically needs to be importable, including from a separate module later.
+Unlike `internal/api` (the server), this is meant to be imported - by the CLI and by every bot. That's why it lives under `pkg/` instead of `internal/`: consumers talk to the server over the network in any language, but a Go client library specifically needs to be importable, including from a separate module later.
 
 **Three type representations exist end to end, not two.** `internal/types` is the engine's own domain vocabulary; the generated protobuf types are the wire contract; `pkg/client`'s `Order`/`Trade`/`PriceLevel`/`BookSnapshot` are a third, hand-written set, deliberately decoupled from both, so the public API's contract can evolve independently of the wire format. `pkg/client/convert.go` is the small mapper between them.
 
-**`SubscribeTrades` returns a plain `<-chan Trade`**, not a raw gRPC stream, and reconnects automatically on failure (see above) — every consumer just ranges over a channel; none of them need to know gRPC streaming exists, let alone that it can fail and recover.
+**`SubscribeTrades` returns a plain `<-chan Trade`**, not a raw gRPC stream, and reconnects automatically on failure (see above) - every consumer just ranges over a channel; none of them need to know gRPC streaming exists, let alone that it can fail and recover.
 
 ## CLI (`cmd/cli`)
 
-The first real consumer of `pkg/client` — a REPL, script-file runner, and one-shot command runner, nothing more. `internal/cli/parse.go` turns one line of text into a `Command` as a pure function with no I/O.
+The first real consumer of `pkg/client` - a REPL, script-file runner, and one-shot command runner, nothing more. `internal/cli/parse.go` turns one line of text into a `Command` as a pure function with no I/O.
 
-**The symbol is a required positional argument** (`janus AAPL ...`), not a flag with a default — a wrong instrument traded silently is a worse failure mode than a wrong address, which just fails loudly to connect.
+**The symbol is a required positional argument** (`janus AAPL ...`), not a flag with a default - a wrong instrument traded silently is a worse failure mode than a wrong address, which just fails loudly to connect.
 
-**Three invocation modes**, all driving the same parse-and-dispatch code path: interactive (`janus AAPL`), script file (`janus -script f.txt AAPL`), and one-shot (`janus AAPL buy 10 @ 105`, runs once and exits — flags must come before the symbol, since the Go `flag` package stops parsing flags at the first bare argument).
+**Three invocation modes**, all driving the same parse-and-dispatch code path: interactive (`janus AAPL`), script file (`janus -script f.txt AAPL`), and one-shot (`janus AAPL buy 10 @ 105`, runs once and exits - flags must come before the symbol, since the Go `flag` package stops parsing flags at the first bare argument).
 
 **`watch` only stops on an OS signal (`Ctrl+C`)**, scoped via `signal.NotifyContext` to just that one command, so it drops back to the prompt rather than killing the whole session.
 
@@ -273,9 +273,9 @@ sequenceDiagram
     Bridge-->>Browser: {"type":"trade","trades":[...]}
 ```
 
-**`internal/websocket` is a hand-rolled RFC 6455 implementation, not a library** — understanding the protocol is part of what this project demonstrates. It has zero knowledge of Janus: just the handshake (`Sec-WebSocket-Accept`), frame encode/decode, masking, ping/pong, and fragmentation, kept as a sibling package rather than nested under `internal/web` since nothing about it is web-specific.
+**`internal/websocket` is a hand-rolled RFC 6455 implementation, not a library** - understanding the protocol is part of what this project demonstrates. It has zero knowledge of Janus: just the handshake (`Sec-WebSocket-Accept`), frame encode/decode, masking, ping/pong, and fragmentation, kept as a sibling package rather than nested under `internal/web` since nothing about it is web-specific.
 
-**`internal/web` is the layer that knows about Janus.** It translates a small JSON schema (`submit`/`cancel`/`subscribe`/`unsubscribe` from the browser; `ack`/`trade`/`book`/`error` back) into `pkg/client` calls — the same library the CLI and every bot already use, so the browser is architecturally just another consumer, never touching the engine directly.
+**`internal/web` is the layer that knows about Janus.** It translates a small JSON schema (`submit`/`cancel`/`subscribe`/`unsubscribe` from the browser; `ack`/`trade`/`book`/`error` back) into `pkg/client` calls - the same library the CLI and every bot already use, so the browser is architecturally just another consumer, never touching the engine directly.
 
 **A submit's own trades are embedded in its `ack`, never re-broadcast as a `trade` message.** Found live, not by a test: a connection that submits an order while also subscribed to that symbol would otherwise see the same fill twice - once as the submit's own result, once via the subscription feed. Keeping "what happened to my order" (`ack.trades`) and "the live market tape" (`trade` broadcasts) as separate concerns fixes it structurally rather than by deduplicating after the fact.
 
@@ -285,19 +285,23 @@ sequenceDiagram
 
 Vanilla JS/HTML/CSS, no framework, no build step - embedded into the `cmd/web` binary via `embed.FS` (`internal/web/static`) and served alongside the WebSocket endpoint, one binary, one port.
 
-**Two views, no page reloads.** A "Markets" home view lists every registered symbol as a live-updating card (price, % change since session open, best bid/ask, volume), polling `list_symbols` every 2 seconds. Clicking one switches — via `#/SYMBOL` hash routing, so it's back-button- and bookmark-friendly — to a per-symbol detail view: a hand-rolled canvas price chart seeded from `GetTradeHistory` on subscribe, a colored trade tape (green/red by uptick/downtick), an order-entry form, and a depth ladder.
+![Markets home view: a live-updating grid of every registered symbol](img/markets.png)
 
-**The depth ladder shows a continuous price scale, not just resting levels.** Real order books have gaps between resting prices; showing only the actual levels left the panel mostly blank and made the spread's position jump around as the number of levels changed. Each render synthesizes a fixed number of consecutive price ticks outward from the best bid/ask (falling back to just past the *other* side's best price if one side is completely empty), with a bar only appearing where an order actually rests — the spread stays pinned at a fixed vertical position no matter how many real levels currently exist.
+**Two views, no page reloads.** A "Markets" home view lists every registered symbol as a live-updating card (price, % change since session open, best bid/ask, volume), polling `list_symbols` every 2 seconds. Clicking one switches - via `#/SYMBOL` hash routing, so it's back-button- and bookmark-friendly - to a per-symbol detail view: a hand-rolled canvas price chart seeded from `GetTradeHistory` on subscribe, a colored trade tape (green/red by uptick/downtick), an order-entry form, and a depth ladder.
 
-**Every ack, trade, book, and history message is tagged with its symbol, and the client drops anything that doesn't match the symbol it's currently viewing.** A late response for a symbol you've since navigated away from would otherwise get misattributed to whatever you're looking at now — including a cancel button sending a cancel for the wrong symbol's order ID, since order IDs are per-symbol sequences and a collision isn't an edge case. Navigating away also clears any submit/cancel still in flight, for the same reason a dropped WebSocket connection does: the original request's response can never arrive on a new connection.
+![Symbol detail view: price chart, depth ladder, trade tape, and order entry](img/detail.png)
 
-**Trade IDs de-duplicate the history-backlog/live-feed overlap.** Subscribing does three things in sequence — register the live feed, fetch trade history, fetch the book — and a trade landing in the gap between the first two would otherwise show up twice, once via history and once live. The client tracks trade IDs it's already rendered per symbol and skips repeats.
+**The depth ladder shows a continuous price scale, not just resting levels.** Real order books have gaps between resting prices; showing only the actual levels left the panel mostly blank and made the spread's position jump around as the number of levels changed. Each render synthesizes a fixed number of consecutive price ticks outward from the best bid/ask (falling back to just past the *other* side's best price if one side is completely empty), with a bar only appearing where an order actually rests - the spread stays pinned at a fixed vertical position no matter how many real levels currently exist.
+
+**Every ack, trade, book, and history message is tagged with its symbol, and the client drops anything that doesn't match the symbol it's currently viewing.** A late response for a symbol you've since navigated away from would otherwise get misattributed to whatever you're looking at now - including a cancel button sending a cancel for the wrong symbol's order ID, since order IDs are per-symbol sequences and a collision isn't an edge case. Navigating away also clears any submit/cancel still in flight, for the same reason a dropped WebSocket connection does: the original request's response can never arrive on a new connection.
+
+**Trade IDs de-duplicate the history-backlog/live-feed overlap.** Subscribing does three things in sequence - register the live feed, fetch trade history, fetch the book - and a trade landing in the gap between the first two would otherwise show up twice, once via history and once live. The client tracks trade IDs it's already rendered per symbol and skips repeats.
 
 **Symbol and description are rendered with `textContent`, never `innerHTML`.** Both are free-form strings an operator controls via `RegisterMarket` - not something the browser should ever trust enough to parse as markup. Found by code review: an early version interpolated them straight into a template string.
 
 ## Bots
 
-Five independent programs, each a standalone `pkg/client` consumer, trading against each other and any human via the CLI to create organic price movement — this is what makes Janus a market instead of just an order book with an API in front of it.
+Five independent programs, each a standalone `pkg/client` consumer, trading against each other and any human via the CLI to create organic price movement - this is what makes Janus a market instead of just an order book with an API in front of it.
 
 ```mermaid
 classDiagram
@@ -357,7 +361,7 @@ classDiagram
     Arbitrage ..|> Strategy
 ```
 
-**`Trader` + `Strategy` is the one runner for every bot**, maker and taker alike. `Strategy` is one decision-and-trade cycle; `Closer` is an optional extension (checked via type assertion, like `io.Closer`) for bots that need cleanup before exiting — only `Quoter` needs it, to cancel its resting orders rather than leaving stale liquidity behind.
+**`Trader` + `Strategy` is the one runner for every bot**, maker and taker alike. `Strategy` is one decision-and-trade cycle; `Closer` is an optional extension (checked via type assertion, like `io.Closer`) for bots that need cleanup before exiting - only `Quoter` needs it, to cancel its resting orders rather than leaving stale liquidity behind.
 
 ```mermaid
 sequenceDiagram
@@ -381,13 +385,13 @@ sequenceDiagram
 
 **The five bots and what each one does:**
 
-- **`spot`** — `Quoter` + `RandomWalk`. Continuously quotes both sides of the spot book around a synthetic reference price, since there's no external market to derive one from yet. Cancels its old quotes *before* submitting new ones each cycle; submitting first would let a fast-moving reference price cross the bot's own still-resting orders (a self-trade).
-- **`futures`** — `Quoter` + `SpotMidPriceSource`. Same quoting loop, but its reference price is the spot book's mid-price plus a fixed basis, coupling the futures instrument to the spot market. Holds the last known-good price during a momentary gap in the spot book (mid-requote) rather than a fixed fallback.
-- **`hedger`** — takes random flow positions in futures (standing in for "some reason to have a position," deliberately not a real signal) and, once net exposure crosses a threshold, flattens it with an offsetting trade in spot. Tracks one combined exposure number rather than separate futures/spot books, since the two instruments are defined to move together.
-- **`noise`** — stateless; submits random-direction market orders across whichever symbols it's configured for, adding uninformed volume with no view.
-- **`arbitrage`** — watches the spot/futures spread against a configured fair basis, enters a position (both legs) once the deviation crosses a threshold, and closes once the spread has reverted halfway back — a fixed hysteresis band rather than a separate config knob, so it doesn't flip-flop right at the entry boundary.
+- **`spot`** - `Quoter` + `RandomWalk`. Continuously quotes both sides of the spot book around a synthetic reference price, since there's no external market to derive one from yet. Cancels its old quotes *before* submitting new ones each cycle; submitting first would let a fast-moving reference price cross the bot's own still-resting orders (a self-trade).
+- **`futures`** - `Quoter` + `SpotMidPriceSource`. Same quoting loop, but its reference price is the spot book's mid-price plus a fixed basis, coupling the futures instrument to the spot market. Holds the last known-good price during a momentary gap in the spot book (mid-requote) rather than a fixed fallback.
+- **`hedger`** - takes random flow positions in futures (standing in for "some reason to have a position," deliberately not a real signal) and, once net exposure crosses a threshold, flattens it with an offsetting trade in spot. Tracks one combined exposure number rather than separate futures/spot books, since the two instruments are defined to move together.
+- **`noise`** - stateless; submits random-direction market orders across whichever symbols it's configured for, adding uninformed volume with no view.
+- **`arbitrage`** - watches the spot/futures spread against a configured fair basis, enters a position (both legs) once the deviation crosses a threshold, and closes once the spread has reverted halfway back - a fixed hysteresis band rather than a separate config knob, so it doesn't flip-flop right at the entry boundary.
 
-**Order sizes are randomized, not fixed.** `bots.JitterQuantity` scales a configured base quantity by roughly ±50% on every order — a book where every resting order is exactly the same size doesn't look or behave like a real one. Arbitrage's two legs still share one jittered value per trade, since they need to stay balanced against each other; only the size varies *trade to trade*, never *within* a pair.
+**Order sizes are randomized, not fixed.** `bots.JitterQuantity` scales a configured base quantity by roughly ±50% on every order - a book where every resting order is exactly the same size doesn't look or behave like a real one. Arbitrage's two legs still share one jittered value per trade, since they need to stay balanced against each other; only the size varies *trade to trade*, never *within* a pair.
 
 ```mermaid
 flowchart LR
@@ -406,15 +410,15 @@ flowchart LR
 
 ## Domain concepts
 
-**Price is an integer, never a float.** `Price` is stored as an integer number of ticks, not `float64` — floats introduce rounding error that's unacceptable once you're summing trade values.
+**Price is an integer, never a float.** `Price` is stored as an integer number of ticks, not `float64` - floats introduce rounding error that's unacceptable once you're summing trade values.
 
 **Quantity vs. Remaining.** `Quantity` is the original size requested and never changes; `Remaining` is how much is still unmatched and decreases with partial fills. This mirrors `OrderQty`/`LeavesQty` in FIX, the real-world protocol most exchanges use.
 
 **Maker vs. Taker.** The **maker** was already resting on the book (provided liquidity); the **taker** is the incoming order that crossed the spread (consumed liquidity). A trade always executes at the maker's price.
 
-**`ID` is engine-assigned and doubles as the ordering key.** Assigned from an internal monotonic counter, not supplied by the caller, so collisions are structurally impossible. There's no separate timestamp field — since the counter is strictly increasing, `ID` alone already answers "did this happen before that," the same way a Kafka offset does.
+**`ID` is engine-assigned and doubles as the ordering key.** Assigned from an internal monotonic counter, not supplied by the caller, so collisions are structurally impossible. There's no separate timestamp field - since the counter is strictly increasing, `ID` alone already answers "did this happen before that," the same way a Kafka offset does.
 
-**`Depth` is an L2 view, not L3.** Reports a price and its *total* resting quantity per level, not the individual orders making it up — the same distinction real market data feeds draw between L2 (aggregated depth) and L3 (every individual order).
+**`Depth` is an L2 view, not L3.** Reports a price and its *total* resting quantity per level, not the individual orders making it up - the same distinction real market data feeds draw between L2 (aggregated depth) and L3 (every individual order).
 
 ## Package layout
 
@@ -447,5 +451,8 @@ pkg/
 proto/
     janus.proto                service definition, source of truth
 scripts/
-    simulate.sh                one-command demo: server + web UI + a full bot fleet across 10 markets
+    simulate.sh                one-command demo: server + web UI + a full bot fleet across 12 markets
+docs/
+    ARCHITECTURE.md            this file
+    img/                       screenshots and the demo GIF used in the docs
 ```
