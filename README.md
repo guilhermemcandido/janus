@@ -6,6 +6,8 @@ A simulated financial market, written in Go - not just a matching engine, but a 
 
 ![Markets overview and a symbol's live order book, chart, and trade tape](docs/img/demo.gif)
 
+## Who's trading
+
 ```mermaid
 flowchart LR
     Spot[spot market-maker] --> AAPL[(AAPL book)]
