@@ -89,13 +89,14 @@ make run-web   ARGS="-addr localhost:50051"  # web UI at :8080
 
 ## Performance
 
-Bottlenecks were identified using `pprof` and confirmed with benchmarks. Full details are documented in [ARCHITECTURE.md](docs/ARCHITECTURE.md#performance).
+Measured with Go's benchmarking tools on an Apple M4 Pro, over the actual gRPC API under concurrent load - the same situation as a dozen bots and browser tabs all trading at once, not one client waiting for each reply before sending the next. Every real caller (CLI, bots, web UI) goes through this same path, so it's the only number that reflects what using Janus is actually like.
 
-| Change | Before | After |
-| --- | --- | --- |
-| `Cancel`, at a synthetic 100,000-tick price spread (tick array replacing a sorted-slice-plus-binary-search index) | ~770 ns/op | ~110 ns/op |
-| `Engine.Submit` allocations (pooled reply channels and `PriceLevel`s) | 7 allocs/op | 3 allocs/op |
-| `Engine.Cancel` allocations (same pooling) | 3 allocs/op | 1 alloc/op |
+| Path | Throughput |
+| --- | --- |
+| Submitting an order | ~140,000/sec |
+| Cancelling an order | ~140,000/sec |
+
+The matching engine itself sustains far more than this underneath - see [ARCHITECTURE.md](docs/ARCHITECTURE.md#performance) for those numbers and why gRPC, not the engine, is the ceiling.
 
 ## Project layout
 
