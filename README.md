@@ -72,7 +72,7 @@ make run-web   ARGS="-addr localhost:50051"  # web UI at :8080
 ### Core exchange
 
 - **Matching engine** - in-memory order book, price-time priority, limit and market orders, integer-tick pricing. Property-tested and benchmarked.
-- **Explicit market registration** - a symbol must be listed before anything can trade, watch, or query it; nothing is created lazily on first order. Modeled after how real exchanges separate listing an instrument from trading it - bots never register anything, only the CLI/operator does.
+- **Explicit market registration** - a symbol must be listed before it can trade, watch, or be queried; only the CLI/operator registers one, bots never do.
 - **Per-symbol market stats and trade history** - last/open/high/low price and volume, plus a bounded recent-trade ring buffer, exposed over gRPC and used to drive the web UI's markets list and price chart.
 - **Persistence** - every book's resting orders, sequence counter, and description are snapshotted to disk periodically and on shutdown, and restored on startup, so a restart resumes rather than starts empty.
 - **gRPC API** - submit, cancel, book snapshots, market listing/registration/stats, a streaming trade feed, and a liveness/restart-detection check, all backed directly by the engine.
@@ -89,14 +89,14 @@ make run-web   ARGS="-addr localhost:50051"  # web UI at :8080
 
 ## Performance
 
-Measured with Go's benchmarking tools on an Apple M4 Pro, over the actual gRPC API under concurrent load - the same situation as a dozen bots and browser tabs all trading at once, not one client waiting for each reply before sending the next. Every real caller (CLI, bots, web UI) goes through this same path, so it's the only number that reflects what using Janus is actually like.
+Measured on an Apple M4 Pro, over gRPC under concurrent load - the path every real caller (CLI, bots, web UI) actually uses.
 
 | Path | Throughput |
 | --- | --- |
-| Submitting an order | ~140,000/sec |
-| Cancelling an order | ~140,000/sec |
+| Submitting an order | ~245,000/sec |
+| Cancelling an order | ~253,000/sec |
 
-The matching engine itself sustains far more than this underneath - see [ARCHITECTURE.md](docs/ARCHITECTURE.md#performance) for those numbers and why gRPC, not the engine, is the ceiling.
+The engine itself sustains far more - see [ARCHITECTURE.md](docs/ARCHITECTURE.md#performance) for why gRPC, not the engine, is the ceiling.
 
 ## Project layout
 
