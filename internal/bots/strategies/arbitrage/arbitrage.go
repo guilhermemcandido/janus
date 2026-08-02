@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/guilhermemcandido/janus/internal/bots"
 	"github.com/guilhermemcandido/janus/pkg/client"
 )
 
@@ -84,13 +85,15 @@ func (a *Arbitrage) Reset(ctx context.Context, out io.Writer) {
 // ActFailed implements bots.FailureReporter.
 func (a *Arbitrage) ActFailed() bool { return a.lastFailed }
 
-// trade submits the futures leg at futuresSide and the spot leg at spotSide, same quantity each.
+// trade submits the futures leg at futuresSide and the spot leg at spotSide, same quantity each -
+// jittered once per call so both legs stay balanced while sizes still vary trade to trade.
 func (a *Arbitrage) trade(ctx context.Context, out io.Writer, futuresSide, spotSide client.Side) {
-	if _, _, err := a.c.SubmitOrder(ctx, a.cfg.FuturesSymbol, futuresSide, client.Market, 0, a.cfg.Quantity); err != nil {
+	qty := bots.JitterQuantity(a.cfg.Quantity)
+	if _, _, err := a.c.SubmitOrder(ctx, a.cfg.FuturesSymbol, futuresSide, client.Market, 0, qty); err != nil {
 		fmt.Fprintln(out, "error submitting futures leg:", client.FriendlyError(err))
 		a.lastFailed = true
 	}
-	if _, _, err := a.c.SubmitOrder(ctx, a.cfg.SpotSymbol, spotSide, client.Market, 0, a.cfg.Quantity); err != nil {
+	if _, _, err := a.c.SubmitOrder(ctx, a.cfg.SpotSymbol, spotSide, client.Market, 0, qty); err != nil {
 		fmt.Fprintln(out, "error submitting spot leg:", client.FriendlyError(err))
 		a.lastFailed = true
 	}

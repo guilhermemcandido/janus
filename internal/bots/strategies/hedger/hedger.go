@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand/v2"
 
+	"github.com/guilhermemcandido/janus/internal/bots"
 	"github.com/guilhermemcandido/janus/pkg/client"
 )
 
@@ -38,13 +39,14 @@ func (h *Hedger) takeFlow(ctx context.Context, out io.Writer) {
 		side = client.Sell
 	}
 
-	order, _, err := h.c.SubmitOrder(ctx, h.cfg.FuturesSymbol, side, client.Market, 0, h.cfg.FlowQuantity)
+	qty := bots.JitterQuantity(h.cfg.FlowQuantity)
+	order, _, err := h.c.SubmitOrder(ctx, h.cfg.FuturesSymbol, side, client.Market, 0, qty)
 	if err != nil {
 		fmt.Fprintln(out, "error taking flow position:", client.FriendlyError(err))
 		h.lastFailed = true
 		return
 	}
-	filled := h.cfg.FlowQuantity - order.Remaining
+	filled := qty - order.Remaining
 	if filled == 0 {
 		return
 	}

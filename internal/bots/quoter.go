@@ -50,12 +50,13 @@ func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 
 	bidPrice := ref - q.cfg.HalfSpread
 	askPrice := ref + q.cfg.HalfSpread
+	bidQty, askQty := JitterQuantity(q.cfg.Quantity), JitterQuantity(q.cfg.Quantity)
 
 	var bidTrades, askTrades []client.Trade
 	submittedBid, submittedAsk := false, false
 
-	if q.cancelIfResting(ctx, &q.bidID, out) {
-		bid, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Buy, client.Limit, bidPrice, q.cfg.Quantity)
+	if q.cancelIfResting(ctx, &q.bidID, out, false) {
+		bid, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Buy, client.Limit, bidPrice, bidQty)
 		if err != nil {
 			fmt.Fprintln(out, "error submitting bid:", client.FriendlyError(err))
 			q.lastFailed = true
@@ -66,8 +67,8 @@ func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 		q.lastFailed = true
 	}
 
-	if q.cancelIfResting(ctx, &q.askID, out) {
-		ask, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Sell, client.Limit, askPrice, q.cfg.Quantity)
+	if q.cancelIfResting(ctx, &q.askID, out, false) {
+		ask, trades, err := q.c.SubmitOrder(ctx, q.cfg.Symbol, client.Sell, client.Limit, askPrice, askQty)
 		if err != nil {
 			fmt.Fprintln(out, "error submitting ask:", client.FriendlyError(err))
 			q.lastFailed = true
@@ -79,7 +80,7 @@ func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 	}
 
 	if submittedBid || submittedAsk {
-		fmt.Fprintf(out, "quoting %s: bid %d x %d / ask %d x %d\n", q.cfg.Symbol, q.cfg.Quantity, bidPrice, q.cfg.Quantity, askPrice)
+		fmt.Fprintf(out, "quoting %s: bid %d x %d / ask %d x %d\n", q.cfg.Symbol, bidQty, bidPrice, askQty, askPrice)
 	}
 	for _, tr := range bidTrades {
 		fmt.Fprintf(out, "  bid matched %d @ %d (maker %d)\n", tr.Quantity, tr.Price, tr.MakerOrderID)
@@ -90,10 +91,11 @@ func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-// Close implements Closer, cancelling any resting quotes before Trader.Run returns.
+// Close implements Closer, cancelling any resting quotes before Trader.Run returns. Best-effort
+// and silent: the process is exiting regardless, so a failed cancel here isn't actionable.
 func (q *Quoter) Close(ctx context.Context, out io.Writer) {
-	q.cancelIfResting(ctx, &q.bidID, out)
-	q.cancelIfResting(ctx, &q.askID, out)
+	q.cancelIfResting(ctx, &q.bidID, out, true)
+	q.cancelIfResting(ctx, &q.askID, out, true)
 }
 
 // Reset implements bots.Resetter: a restarted exchange no longer has these orders, so cancelling them is pointless.
@@ -108,12 +110,14 @@ func (q *Quoter) ActFailed() bool { return q.lastFailed }
 // cancelIfResting cancels the resting order at *id, if any, tolerating ones already filled.
 // Returns whether it's now safe to submit a replacement: false only when a real cancel error
 // left the old order's resting state unknown.
-func (q *Quoter) cancelIfResting(ctx context.Context, id *uint64, out io.Writer) bool {
+func (q *Quoter) cancelIfResting(ctx context.Context, id *uint64, out io.Writer, quiet bool) bool {
 	if *id == 0 {
 		return true
 	}
 	if _, err := q.c.CancelOrder(ctx, q.cfg.Symbol, *id); err != nil && status.Code(err) != codes.NotFound {
-		fmt.Fprintln(out, "error cancelling order", *id, ":", client.FriendlyError(err))
+		if !quiet {
+			fmt.Fprintln(out, "error cancelling order", *id, ":", client.FriendlyError(err))
+		}
 		return false
 	}
 	*id = 0

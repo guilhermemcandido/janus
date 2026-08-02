@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand/v2"
 
+	"github.com/guilhermemcandido/janus/internal/bots"
 	"github.com/guilhermemcandido/janus/pkg/client"
 )
 
@@ -29,12 +30,13 @@ func (n *Noise) Act(ctx context.Context, out io.Writer) error {
 		side = client.Sell
 	}
 
-	order, trades, err := n.c.SubmitOrder(ctx, symbol, side, client.Market, 0, n.cfg.Quantity)
+	qty := bots.JitterQuantity(n.cfg.Quantity)
+	order, trades, err := n.c.SubmitOrder(ctx, symbol, side, client.Market, 0, qty)
 	if err != nil {
 		fmt.Fprintln(out, "error submitting noise trade:", client.FriendlyError(err))
 		return nil
 	}
-	filled := n.cfg.Quantity - order.Remaining
+	filled := qty - order.Remaining
 	if filled == 0 {
 		return nil
 	}

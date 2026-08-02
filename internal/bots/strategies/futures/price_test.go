@@ -46,6 +46,12 @@ func newTestClient(t *testing.T) *client.Client {
 	}
 	t.Cleanup(func() { c.Close() })
 
+	for _, symbol := range []string{"AAPL", "AAPLF"} {
+		if _, err := c.RegisterMarket(context.Background(), symbol, symbol); err != nil {
+			t.Fatalf("RegisterMarket(%q): %v", symbol, err)
+		}
+	}
+
 	return c
 }
 

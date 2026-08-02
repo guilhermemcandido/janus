@@ -48,6 +48,12 @@ func newTestClient(t *testing.T) *client.Client {
 	}
 	t.Cleanup(func() { c.Close() })
 
+	for _, symbol := range []string{"AAPL", "AAPLF"} {
+		if _, err := c.RegisterMarket(context.Background(), symbol, symbol); err != nil {
+			t.Fatalf("RegisterMarket(%q): %v", symbol, err)
+		}
+	}
+
 	return c
 }
 
@@ -79,12 +85,17 @@ func TestQuoter_ActRestsBidAndAsk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOrderBook returned error: %v", err)
 	}
-	if len(book.Bids) != 1 || book.Bids[0].Price != 98 || book.Bids[0].Quantity != 10 {
-		t.Fatalf("Bids = %+v, want [{98 10}]", book.Bids)
+	if len(book.Bids) != 1 || book.Bids[0].Price != 98 || !inJitterRange(book.Bids[0].Quantity, 10) {
+		t.Fatalf("Bids = %+v, want [{98 ~10}]", book.Bids)
 	}
-	if len(book.Asks) != 1 || book.Asks[0].Price != 102 || book.Asks[0].Quantity != 10 {
-		t.Fatalf("Asks = %+v, want [{102 10}]", book.Asks)
+	if len(book.Asks) != 1 || book.Asks[0].Price != 102 || !inJitterRange(book.Asks[0].Quantity, 10) {
+		t.Fatalf("Asks = %+v, want [{102 ~10}]", book.Asks)
 	}
+}
+
+// inJitterRange reports whether got is within JitterQuantity's ±50% range of base.
+func inJitterRange(got, base uint64) bool {
+	return got >= base/2 && got <= base+base/2
 }
 
 func TestQuoter_ActReplacesPreviousQuotes(t *testing.T) {
@@ -123,8 +134,9 @@ func TestQuoter_ActToleratesAlreadyFilledQuote(t *testing.T) {
 		t.Fatalf("Act returned error: %v", err)
 	}
 
-	// Fill the bot's resting ask (100+2=102) from another participant.
-	if _, _, err := c.SubmitOrder(ctx, "AAPL", client.Buy, client.Limit, 102, 10); err != nil {
+	// Fill the bot's resting ask (100+2=102) from another participant. Oversized so it fully
+	// fills regardless of JitterQuantity's range on the bot's own resting size.
+	if _, _, err := c.SubmitOrder(ctx, "AAPL", client.Buy, client.Limit, 102, 20); err != nil {
 		t.Fatalf("SubmitOrder returned error: %v", err)
 	}
 
@@ -151,7 +163,7 @@ func TestQuoter_CancelIfRestingKeepsIDOnNonNotFoundError(t *testing.T) {
 	cancelledCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	ok := q.cancelIfResting(cancelledCtx, &q.bidID, &bytes.Buffer{})
+	ok := q.cancelIfResting(cancelledCtx, &q.bidID, &bytes.Buffer{}, false)
 
 	if ok {
 		t.Fatalf("cancelIfResting = true, want false (cancelled context should surface a non-NotFound error)")
