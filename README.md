@@ -24,18 +24,30 @@ Details on how each piece works, the concurrency model, and full diagrams live i
 Everything below is a `Makefile` target — run `make help` for the full list.
 
 ```sh
+make simulate    # one command: server, web UI, 10 markets, and a full fleet of bots trading them
+```
+
+Opens the web UI in your browser automatically. Ctrl+C stops everything cleanly.
+
+To run pieces by hand instead:
+
+```sh
 make build              # build every binary into bin/
 make run-server         # start the exchange (Ctrl+C to stop)
 
-# in other terminals:
+# in another terminal, list an instrument before anything can trade it:
+make run-cli ARGS="AAPL register Apple Inc."
+
+# then, in other terminals:
 make run-spot    ARGS="AAPL"
 make run-futures ARGS="-spot AAPL AAPLF"
 make run-hedger  ARGS="-futures AAPLF -spot AAPL"
 make run-noise   ARGS="-symbols AAPL,AAPLF"
 make run-arbitrage ARGS="-spot AAPL -futures AAPLF"
 
-make run-watch ARGS="AAPL"          # stream live trades
-make run-cli   ARGS="AAPL"          # interactive session: buy/sell/book/cancel
+make run-watch ARGS="AAPL"                   # stream live trades
+make run-cli   ARGS="AAPL"                   # interactive session: buy/sell/book/cancel
+make run-web   ARGS="-addr localhost:50051"  # web UI at :8080
 ```
 
 `make check` runs formatting, `go vet`, and the full test suite (with `-race`).
@@ -43,12 +55,15 @@ make run-cli   ARGS="AAPL"          # interactive session: buy/sell/book/cancel
 ## What's built
 
 - **Matching engine** — in-memory order book, price-time priority, limit and market orders, integer-tick pricing. Property-tested and benchmarked.
-- **Persistence** — every book's resting orders are snapshotted to disk periodically and on shutdown, and restored on startup, so a restart resumes rather than starts empty.
-- **gRPC API** — submit, cancel, book snapshots, a streaming trade feed, and a liveness/restart-detection check, all backed directly by the engine.
-- **Go client library (`pkg/client`)** — the public, importable foundation every consumer (CLI, bots) is built on, with automatic reconnection for the trade feed.
-- **CLI (`cmd/cli`)** — interactive REPL, script-file replay, and one-shot commands.
-- **Five bots** — two market makers (spot, futures), a hedger, a noise trader, and an arbitrage bot, all sharing one runner/strategy pattern. See [ARCHITECTURE.md](ARCHITECTURE.md#bots) for what each one actually does.
-- **Browser bridge (`cmd/web`)** — a hand-rolled WebSocket server (`internal/websocket`) and a JSON-to-`pkg/client` bridge (`internal/web`), tested and working end to end. The actual frontend page is still pending; see [TODO.md](TODO.md).
+- **Explicit market registration** — a symbol must be listed before anything can trade, watch, or query it; nothing is created lazily on first order. Modeled after how real exchanges separate listing an instrument from trading it — bots never register anything, only the CLI/operator does.
+- **Per-symbol market stats and trade history** — last/open/high/low price and volume, plus a bounded recent-trade ring buffer, exposed over gRPC and used to drive the web UI's markets list and price chart.
+- **Persistence** — every book's resting orders, sequence counter, and description are snapshotted to disk periodically and on shutdown, and restored on startup, so a restart resumes rather than starts empty.
+- **gRPC API** — submit, cancel, book snapshots, market listing/registration/stats, a streaming trade feed, and a liveness/restart-detection check, all backed directly by the engine.
+- **Go client library (`pkg/client`)** — the public, importable foundation every consumer (CLI, bots, web UI) is built on, with automatic reconnection for the trade feed.
+- **CLI (`cmd/cli`)** — interactive REPL, script-file replay, one-shot commands, and market registration.
+- **Five bots** — two market makers (spot, futures), a hedger, a noise trader, and an arbitrage bot, all sharing one runner/strategy pattern and submitting randomized order sizes for a more realistic-looking book. See [ARCHITECTURE.md](ARCHITECTURE.md#bots) for what each one actually does.
+- **Web UI (`cmd/web`)** — a hand-rolled WebSocket server (`internal/websocket`), a JSON-to-`pkg/client` bridge (`internal/web`), and a vanilla JS/HTML/CSS frontend embedded via `embed.FS`: a live markets overview and a per-symbol view with an order-book depth ladder, a colored trade tape, and a price chart.
+- **One-command demo (`make simulate`)** — registers ten markets (five spot equities, a futures contract on each) and launches the server, web UI, and a full fleet of bots trading all of them.
 
 ## Project layout
 
@@ -57,6 +72,7 @@ cmd/            binaries: server, cli, web UI, and one entrypoint per bot
 internal/       engine, gRPC server, persistence, WebSocket/web bridge, CLI, and bots (not importable outside this module)
 pkg/client/     the public Go client library
 proto/          janus.proto - the gRPC service definition, source of truth
+scripts/        simulate.sh - one-command demo: server + web UI + a full bot fleet across 10 markets
 ```
 
 ## Language plan
