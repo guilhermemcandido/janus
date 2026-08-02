@@ -1,5 +1,5 @@
 .PHONY: help build test test-race vet fmt fmt-check check proto tools clean clean-state \
-	run-server run-cli run-watch run-spot run-futures run-hedger run-noise run-arbitrage
+	run-server run-cli run-watch run-web run-spot run-futures run-hedger run-noise run-arbitrage simulate
 
 BIN_DIR := bin
 DATA_DIR := data
@@ -15,6 +15,7 @@ build: ## Build all binaries into bin/
 	@mkdir -p $(BIN_DIR)
 	@go build -o $(BIN_DIR)/server ./cmd/server
 	@go build -o $(BIN_DIR)/cli ./cmd/cli
+	@go build -o $(BIN_DIR)/web ./cmd/web
 	@for bot in $(BOTS); do go build -o $(BIN_DIR)/$$bot ./cmd/bots/strategies/$$bot; done
 
 test: ## Run tests
@@ -67,6 +68,11 @@ run-watch: ## Watch live trades for a symbol, e.g. ARGS="AAPL"
 	@go build -o $(BIN_DIR)/cli ./cmd/cli
 	-@$(BIN_DIR)/cli $(ARGS) watch
 
+run-web: ## Run the web UI, e.g. ARGS="-listen :8080 -addr localhost:50051"
+	@mkdir -p $(BIN_DIR)
+	@go build -o $(BIN_DIR)/web ./cmd/web
+	-@$(BIN_DIR)/web $(ARGS)
+
 run-spot: ## Run the spot market-maker bot, e.g. ARGS="AAPL"
 	@mkdir -p $(BIN_DIR)
 	@go build -o $(BIN_DIR)/spot ./cmd/bots/strategies/spot
@@ -91,3 +97,8 @@ run-arbitrage: ## Run the arbitrage bot, e.g. ARGS="-spot AAPL -futures AAPLF"
 	@mkdir -p $(BIN_DIR)
 	@go build -o $(BIN_DIR)/arbitrage ./cmd/bots/strategies/arbitrage
 	-@$(BIN_DIR)/arbitrage $(ARGS)
+
+##@ Demo
+
+simulate: build ## Run server + web UI + bots trading AAPL/MSFT/GOOG plus an AAPL futures/hedge/arb setup; opens http://localhost:8080
+	-@./scripts/simulate.sh
