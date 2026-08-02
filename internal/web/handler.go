@@ -64,6 +64,8 @@ func (h *connHandler) handleMessage(payload []byte) {
 		h.handleSubscribe(msg.Symbol)
 	case "unsubscribe":
 		h.handleUnsubscribe(msg.Symbol)
+	case "list_symbols":
+		h.handleListSymbols()
 	default:
 		h.sendError("unknown message type " + msg.Type)
 	}
@@ -132,6 +134,7 @@ func (h *connHandler) handleSubscribe(symbol string) {
 		return
 	}
 
+	h.pushHistory(symbol)
 	h.pushBook(symbol)
 
 	go func() {
@@ -171,6 +174,28 @@ func (h *connHandler) pushBook(symbol string) {
 		return // best-effort: a trade notification without a fresh book isn't fatal
 	}
 	h.send(ServerMessage{Type: "book", Symbol: symbol, Book: bookViewFrom(book)})
+}
+
+// pushHistory seeds a newly opened symbol with its recent trades, so a chart isn't blank on open.
+func (h *connHandler) pushHistory(symbol string) {
+	ctx, cancel := context.WithTimeout(h.ctx, requestTimeout)
+	defer cancel()
+	trades, err := h.client.GetTradeHistory(ctx, symbol)
+	if err != nil {
+		return // best-effort: the chart just starts empty
+	}
+	h.send(ServerMessage{Type: "history", Symbol: symbol, Trades: tradeViewsFrom(trades)})
+}
+
+func (h *connHandler) handleListSymbols() {
+	ctx, cancel := context.WithTimeout(h.ctx, requestTimeout)
+	defer cancel()
+	markets, err := h.client.ListSymbols(ctx)
+	if err != nil {
+		h.sendError("list symbols: " + client.FriendlyError(err))
+		return
+	}
+	h.send(ServerMessage{Type: "markets", Markets: marketViewsFrom(markets)})
 }
 
 func (h *connHandler) send(msg ServerMessage) {

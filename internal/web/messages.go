@@ -19,12 +19,13 @@ type ClientMessage struct {
 
 // ServerMessage is a message pushed from the bridge to the browser.
 type ServerMessage struct {
-	Type   string       `json:"type"`
-	Symbol string       `json:"symbol,omitempty"`
-	Order  *orderView   `json:"order,omitempty"`
-	Trades []*tradeView `json:"trades,omitempty"`
-	Book   *bookView    `json:"book,omitempty"`
-	Error  string       `json:"error,omitempty"`
+	Type    string        `json:"type"`
+	Symbol  string        `json:"symbol,omitempty"`
+	Order   *orderView    `json:"order,omitempty"`
+	Trades  []*tradeView  `json:"trades,omitempty"`
+	Book    *bookView     `json:"book,omitempty"`
+	Markets []*marketView `json:"markets,omitempty"`
+	Error   string        `json:"error,omitempty"`
 }
 
 type orderView struct {
@@ -33,6 +34,7 @@ type orderView struct {
 }
 
 type tradeView struct {
+	ID           uint64 `json:"id"`
 	Price        int64  `json:"price"`
 	Quantity     uint64 `json:"quantity"`
 	MakerOrderID uint64 `json:"makerOrderId"`
@@ -47,6 +49,19 @@ type priceLevelView struct {
 type bookView struct {
 	Bids []priceLevelView `json:"bids"`
 	Asks []priceLevelView `json:"asks"`
+}
+
+type marketView struct {
+	Symbol      string          `json:"symbol"`
+	Description string          `json:"description"`
+	HasTraded   bool            `json:"hasTraded"`
+	LastPrice   int64           `json:"lastPrice"`
+	OpenPrice   int64           `json:"openPrice"`
+	High        int64           `json:"high"`
+	Low         int64           `json:"low"`
+	Volume      uint64          `json:"volume"`
+	BestBid     *priceLevelView `json:"bestBid,omitempty"`
+	BestAsk     *priceLevelView `json:"bestAsk,omitempty"`
 }
 
 func parseSide(s string) (client.Side, error) {
@@ -72,13 +87,43 @@ func parseOrderType(s string) (client.OrderType, error) {
 }
 
 func tradeViewFrom(tr client.Trade) *tradeView {
-	return &tradeView{Price: tr.Price, Quantity: tr.Quantity, MakerOrderID: tr.MakerOrderID, TakerOrderID: tr.TakerOrderID}
+	return &tradeView{ID: tr.ID, Price: tr.Price, Quantity: tr.Quantity, MakerOrderID: tr.MakerOrderID, TakerOrderID: tr.TakerOrderID}
 }
 
 func tradeViewsFrom(trades []client.Trade) []*tradeView {
 	views := make([]*tradeView, len(trades))
 	for i, tr := range trades {
 		views[i] = tradeViewFrom(tr)
+	}
+	return views
+}
+
+func priceLevelViewFrom(l *client.PriceLevel) *priceLevelView {
+	if l == nil {
+		return nil
+	}
+	return &priceLevelView{Price: l.Price, Quantity: l.Quantity}
+}
+
+func marketViewFrom(m client.MarketSummary) *marketView {
+	return &marketView{
+		Symbol:      m.Symbol,
+		Description: m.Description,
+		HasTraded:   m.HasTraded,
+		LastPrice:   m.LastPrice,
+		OpenPrice:   m.OpenPrice,
+		High:        m.High,
+		Low:         m.Low,
+		Volume:      m.Volume,
+		BestBid:     priceLevelViewFrom(m.BestBid),
+		BestAsk:     priceLevelViewFrom(m.BestAsk),
+	}
+}
+
+func marketViewsFrom(markets []client.MarketSummary) []*marketView {
+	views := make([]*marketView, len(markets))
+	for i, m := range markets {
+		views[i] = marketViewFrom(m)
 	}
 	return views
 }

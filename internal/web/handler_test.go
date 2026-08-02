@@ -164,6 +164,13 @@ func newTestServer(t *testing.T, c *client.Client) *httptest.Server {
 	return srv
 }
 
+func registerMarket(t *testing.T, c *client.Client, symbol, description string) {
+	t.Helper()
+	if _, err := c.RegisterMarket(context.Background(), symbol, description); err != nil {
+		t.Fatalf("RegisterMarket(%q) returned error: %v", symbol, err)
+	}
+}
+
 func serverAddr(srv *httptest.Server) string {
 	return srv.Listener.Addr().String()
 }
@@ -171,6 +178,7 @@ func serverAddr(srv *httptest.Server) string {
 func TestHandleConn_SubmitRestingOrderReturnsAck(t *testing.T) {
 	c := newTestClient(t)
 	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
 	ws := dialWS(t, serverAddr(srv))
 
 	ws.sendJSON(ClientMessage{Type: "submit", Symbol: "AAPL", Side: "buy", OrderType: "limit", Price: 100, Quantity: 10})
@@ -184,6 +192,7 @@ func TestHandleConn_SubmitRestingOrderReturnsAck(t *testing.T) {
 func TestHandleConn_SubmitCrossingOrderReturnsAckWithTradesAndBook(t *testing.T) {
 	c := newTestClient(t)
 	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
 	ws := dialWS(t, serverAddr(srv))
 
 	ws.sendJSON(ClientMessage{Type: "submit", Symbol: "AAPL", Side: "sell", OrderType: "limit", Price: 100, Quantity: 10})
@@ -206,6 +215,7 @@ func TestHandleConn_SubmitCrossingOrderReturnsAckWithTradesAndBook(t *testing.T)
 func TestHandleConn_SubmitInvalidSideReturnsError(t *testing.T) {
 	c := newTestClient(t)
 	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
 	ws := dialWS(t, serverAddr(srv))
 
 	ws.sendJSON(ClientMessage{Type: "submit", Symbol: "AAPL", Side: "sideways", OrderType: "limit", Price: 100, Quantity: 10})
@@ -219,6 +229,7 @@ func TestHandleConn_SubmitInvalidSideReturnsError(t *testing.T) {
 func TestHandleConn_CancelReturnsAck(t *testing.T) {
 	c := newTestClient(t)
 	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
 	ws := dialWS(t, serverAddr(srv))
 
 	ws.sendJSON(ClientMessage{Type: "submit", Symbol: "AAPL", Side: "buy", OrderType: "limit", Price: 100, Quantity: 10})
@@ -239,9 +250,14 @@ func TestHandleConn_CancelReturnsAck(t *testing.T) {
 func TestHandleConn_SubscribeReceivesInitialBookThenTradeUpdates(t *testing.T) {
 	c := newTestClient(t)
 	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
 	ws := dialWS(t, serverAddr(srv))
 
 	ws.sendJSON(ClientMessage{Type: "subscribe", Symbol: "AAPL"})
+	history := ws.readMessage()
+	if history.Type != "history" || len(history.Trades) != 0 {
+		t.Fatalf("history = %+v, want empty", history)
+	}
 	initial := ws.readMessage()
 	if initial.Type != "book" || len(initial.Book.Bids) != 0 || len(initial.Book.Asks) != 0 {
 		t.Fatalf("initial book = %+v, want empty", initial)
@@ -269,9 +285,11 @@ func TestHandleConn_SubscribeReceivesInitialBookThenTradeUpdates(t *testing.T) {
 func TestHandleConn_SubmitWhileSubscribedDeliversTradeExactlyOnce(t *testing.T) {
 	c := newTestClient(t)
 	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
 	ws := dialWS(t, serverAddr(srv))
 
 	ws.sendJSON(ClientMessage{Type: "subscribe", Symbol: "AAPL"})
+	ws.readMessage() // history backlog
 	ws.readMessage() // initial book
 
 	ws.sendJSON(ClientMessage{Type: "submit", Symbol: "AAPL", Side: "sell", OrderType: "limit", Price: 100, Quantity: 10})
@@ -305,12 +323,60 @@ func TestHandleConn_SubmitWhileSubscribedDeliversTradeExactlyOnce(t *testing.T) 
 	}
 }
 
+func TestHandleConn_SubscribeSeedsHistoryBacklog(t *testing.T) {
+	c := newTestClient(t)
+	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
+
+	if _, _, err := c.SubmitOrder(context.Background(), "AAPL", client.Sell, client.Limit, 100, 10); err != nil {
+		t.Fatalf("SubmitOrder returned error: %v", err)
+	}
+	if _, _, err := c.SubmitOrder(context.Background(), "AAPL", client.Buy, client.Limit, 100, 10); err != nil {
+		t.Fatalf("SubmitOrder returned error: %v", err)
+	}
+
+	ws := dialWS(t, serverAddr(srv))
+	ws.sendJSON(ClientMessage{Type: "subscribe", Symbol: "AAPL"})
+
+	history := ws.readMessage()
+	if history.Type != "history" || len(history.Trades) != 1 || history.Trades[0].Quantity != 10 {
+		t.Fatalf("history = %+v, want one backlog trade of quantity 10", history)
+	}
+}
+
+func TestHandleConn_ListSymbolsReturnsMarketSummaries(t *testing.T) {
+	c := newTestClient(t)
+	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
+
+	if _, _, err := c.SubmitOrder(context.Background(), "AAPL", client.Sell, client.Limit, 100, 10); err != nil {
+		t.Fatalf("SubmitOrder returned error: %v", err)
+	}
+	if _, _, err := c.SubmitOrder(context.Background(), "AAPL", client.Buy, client.Limit, 100, 10); err != nil {
+		t.Fatalf("SubmitOrder returned error: %v", err)
+	}
+
+	ws := dialWS(t, serverAddr(srv))
+	ws.sendJSON(ClientMessage{Type: "list_symbols"})
+
+	msg := ws.readMessage()
+	if msg.Type != "markets" || len(msg.Markets) != 1 {
+		t.Fatalf("msg = %+v, want one market summary", msg)
+	}
+	m := msg.Markets[0]
+	if m.Symbol != "AAPL" || !m.HasTraded || m.LastPrice != 100 || m.Volume != 10 {
+		t.Fatalf("market = %+v, want AAPL traded at 100 with volume 10", m)
+	}
+}
+
 func TestHandleConn_UnsubscribeStopsTradeForwarding(t *testing.T) {
 	c := newTestClient(t)
 	srv := newTestServer(t, c)
+	registerMarket(t, c, "AAPL", "Apple Inc.")
 	ws := dialWS(t, serverAddr(srv))
 
 	ws.sendJSON(ClientMessage{Type: "subscribe", Symbol: "AAPL"})
+	ws.readMessage() // history backlog
 	ws.readMessage() // initial book
 
 	ws.sendJSON(ClientMessage{Type: "unsubscribe", Symbol: "AAPL"})
