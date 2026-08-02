@@ -2,7 +2,6 @@ package api
 
 import (
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
 	"github.com/guilhermemcandido/janus/internal/engine"
@@ -99,16 +98,16 @@ func marketSummaryToProto(description string, stats types.MarketStats, bestBid, 
 	}
 }
 
-// toStatus maps a domain error to the gRPC status code a client should see.
-func toStatus(err error) error {
+// toCode maps a domain error to the gRPC status code a client should see.
+func toCode(err error) codes.Code {
 	switch err {
 	case engine.ErrInvalidQuantity, engine.ErrInvalidPrice, engine.ErrPriceOutOfRange, engine.ErrSymbolMismatch:
-		return status.Error(codes.InvalidArgument, err.Error())
+		return codes.InvalidArgument
 	case engine.ErrOrderNotFound:
-		return status.Error(codes.NotFound, err.Error())
+		return codes.NotFound
 	case engine.ErrEngineStopped:
-		return status.Error(codes.Unavailable, err.Error())
+		return codes.Unavailable
 	default:
-		return status.Error(codes.Internal, err.Error())
+		return codes.Internal
 	}
 }

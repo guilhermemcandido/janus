@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"google.golang.org/grpc"
@@ -14,8 +15,9 @@ import (
 
 // Client is a Go client for the Janus gRPC exchange API.
 type Client struct {
-	conn *grpc.ClientConn
-	stub pb.ExchangeClient
+	conn   *grpc.ClientConn
+	stub   pb.ExchangeClient
+	orders *orderStream
 }
 
 // Dial connects to a Janus exchange server at addr, with keepalive pings to detect a dead connection.
@@ -33,36 +35,55 @@ func Dial(addr string, opts ...grpc.DialOption) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{conn: conn, stub: pb.NewExchangeClient(conn)}, nil
+	c := &Client{conn: conn, stub: pb.NewExchangeClient(conn)}
+	c.orders = newOrderStream(c)
+	return c, nil
 }
 
 // Close closes the underlying connection.
 func (c *Client) Close() error {
+	c.orders.closeFn()
 	return c.conn.Close()
 }
 
 // SubmitOrder submits a new order and returns its resulting state plus any trades it caused.
 func (c *Client) SubmitOrder(ctx context.Context, symbol string, side Side, typ OrderType, price int64, quantity uint64) (*Order, []Trade, error) {
-	resp, err := c.stub.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	evt, err := c.orders.send(ctx, &pb.OrderCommand{Command: &pb.OrderCommand_Submit{Submit: &pb.SubmitOrderRequest{
 		Symbol:   symbol,
 		Side:     sideToProto(side),
 		Type:     typeToProto(typ),
 		Price:    price,
 		Quantity: quantity,
-	})
+	}}})
 	if err != nil {
 		return nil, nil, err
 	}
-	return orderFromProto(resp.Order), tradesFromProto(resp.Trades), nil
+	switch e := evt.Event.(type) {
+	case *pb.OrderEvent_SubmitResult:
+		return orderFromProto(e.SubmitResult.Order), tradesFromProto(e.SubmitResult.Trades), nil
+	case *pb.OrderEvent_Error:
+		return nil, nil, orderEventErr(e.Error)
+	default:
+		return nil, nil, fmt.Errorf("unexpected OrderEvent type %T", evt.Event)
+	}
 }
 
 // CancelOrder cancels a resting order by ID and returns its state at the moment of cancellation.
 func (c *Client) CancelOrder(ctx context.Context, symbol string, orderID uint64) (*Order, error) {
-	resp, err := c.stub.CancelOrder(ctx, &pb.CancelOrderRequest{Symbol: symbol, OrderId: orderID})
+	evt, err := c.orders.send(ctx, &pb.OrderCommand{Command: &pb.OrderCommand_Cancel{Cancel: &pb.CancelOrderRequest{
+		Symbol: symbol, OrderId: orderID,
+	}}})
 	if err != nil {
 		return nil, err
 	}
-	return orderFromProto(resp.Order), nil
+	switch e := evt.Event.(type) {
+	case *pb.OrderEvent_CancelResult:
+		return orderFromProto(e.CancelResult.Order), nil
+	case *pb.OrderEvent_Error:
+		return nil, orderEventErr(e.Error)
+	default:
+		return nil, fmt.Errorf("unexpected OrderEvent type %T", evt.Event)
+	}
 }
 
 // GetOrderBook returns an L2 snapshot of up to depth price levels per side.

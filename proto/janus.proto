@@ -5,8 +5,7 @@ package janus;
 option go_package = "github.com/guilhermemcandido/janus/internal/api/proto";
 
 service Exchange {
-  rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderResponse);
-  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc OrderStream(stream OrderCommand) returns (stream OrderEvent);
   rpc GetOrderBook(GetOrderBookRequest) returns (GetOrderBookResponse);
   rpc SubscribeTrades(SubscribeTradesRequest) returns (stream Trade);
   rpc Ping(PingRequest) returns (PingResponse);
@@ -69,6 +68,32 @@ message CancelOrderRequest {
 
 message CancelOrderResponse {
   Order order = 1;
+}
+
+// OrderCommand is one entry sent into OrderStream, tagged with a correlation_id the client picks
+// so the matching OrderEvent can be routed back to the caller waiting on it.
+message OrderCommand {
+  uint64 correlation_id = 1;
+  oneof command {
+    SubmitOrderRequest submit = 2;
+    CancelOrderRequest cancel = 3;
+  }
+}
+
+// OrderEvent is OrderStream's reply to one OrderCommand, carrying the same correlation_id back.
+// Errors ride in-band (OrderError), not the stream's own gRPC status - one failed command can't tear down the stream others are still using.
+message OrderEvent {
+  uint64 correlation_id = 1;
+  oneof event {
+    SubmitOrderResponse submit_result = 2;
+    CancelOrderResponse cancel_result = 3;
+    OrderError error = 4;
+  }
+}
+
+message OrderError {
+  uint32 code = 1; // a google.golang.org/grpc/codes.Code value
+  string message = 2;
 }
 
 message GetOrderBookRequest {

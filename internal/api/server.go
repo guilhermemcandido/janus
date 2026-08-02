@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"log"
 	"sort"
 	"strings"
 
@@ -12,7 +11,6 @@ import (
 
 	pb "github.com/guilhermemcandido/janus/internal/api/proto"
 	"github.com/guilhermemcandido/janus/internal/engine"
-	"github.com/guilhermemcandido/janus/internal/types"
 	"github.com/guilhermemcandido/janus/internal/vtcodec"
 )
 
@@ -29,49 +27,6 @@ func NewServer(exchange *engine.Exchange) *Server {
 
 func marketNotRegistered(symbol string) error {
 	return status.Errorf(codes.NotFound, "market %q is not registered", symbol)
-}
-
-func (s *Server) SubmitOrder(ctx context.Context, req *pb.SubmitOrderRequest) (*pb.SubmitOrderResponse, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, status.FromContextError(err).Err()
-	}
-
-	eng, ok := s.exchange.Lookup(req.Symbol)
-	if !ok {
-		return nil, marketNotRegistered(req.Symbol)
-	}
-	order := types.NewOrder(req.Symbol, sideFromProto(req.Side), typeFromProto(req.Type), req.Price, req.Quantity)
-
-	trades, err := eng.Submit(order)
-	if err != nil {
-		return nil, toStatus(err)
-	}
-	for _, tr := range trades {
-		log.Printf("trade: %s %d @ %d (maker %d, taker %d)", req.Symbol, tr.Quantity, tr.Price, tr.MakerOrderID, tr.TakerOrderID)
-	}
-
-	return &pb.SubmitOrderResponse{
-		Order:  orderToProto(order),
-		Trades: tradesToProto(req.Symbol, trades),
-	}, nil
-}
-
-func (s *Server) CancelOrder(ctx context.Context, req *pb.CancelOrderRequest) (*pb.CancelOrderResponse, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, status.FromContextError(err).Err()
-	}
-
-	eng, ok := s.exchange.Lookup(req.Symbol)
-	if !ok {
-		return nil, marketNotRegistered(req.Symbol)
-	}
-
-	order, err := eng.Cancel(req.OrderId)
-	if err != nil {
-		return nil, toStatus(err)
-	}
-
-	return &pb.CancelOrderResponse{Order: orderToProto(order)}, nil
 }
 
 func (s *Server) GetOrderBook(ctx context.Context, req *pb.GetOrderBookRequest) (*pb.GetOrderBookResponse, error) {

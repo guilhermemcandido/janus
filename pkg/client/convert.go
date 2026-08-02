@@ -1,6 +1,17 @@
 package client
 
-import pb "github.com/guilhermemcandido/janus/internal/api/proto"
+import (
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	pb "github.com/guilhermemcandido/janus/internal/api/proto"
+)
+
+// orderEventErr reconstructs a normal status error from an in-band OrderEvent_Error, so callers can
+// still use status.Code(err) exactly as they could with the old unary RPCs.
+func orderEventErr(e *pb.OrderError) error {
+	return status.Error(codes.Code(e.Code), e.Message)
+}
 
 func sideToProto(s Side) pb.Side {
 	if s == Sell {

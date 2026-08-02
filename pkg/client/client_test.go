@@ -20,12 +20,19 @@ const bufSize = 1024 * 1024
 
 func newTestClient(t *testing.T) *Client {
 	t.Helper()
+	c, _ := newStoppableTestClient(t)
+	return c
+}
+
+// newStoppableTestClient is like newTestClient, but also returns a stop func the test can call to
+// kill the server on demand, independent of Client.Close (registered separately via t.Cleanup).
+func newStoppableTestClient(t *testing.T) (c *Client, stop func()) {
+	t.Helper()
 
 	lis := bufconn.Listen(bufSize)
 	grpcServer := grpc.NewServer()
 	exchange := engine.NewExchange()
 	pb.RegisterExchangeServer(grpcServer, api.NewServer(exchange))
-
 	go func() {
 		_ = grpcServer.Serve(lis)
 	}()
@@ -37,14 +44,13 @@ func newTestClient(t *testing.T) *Client {
 	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
 		return lis.Dial()
 	}
-
 	c, err := Dial("passthrough:///bufnet", grpc.WithContextDialer(dialer))
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
 	t.Cleanup(func() { c.Close() })
 
-	return c
+	return c, func() { grpcServer.Stop(); exchange.Close() }
 }
 
 func TestClient_RegisterMarket(t *testing.T) {

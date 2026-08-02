@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -60,6 +61,53 @@ func registerMarket(t testing.TB, client pb.ExchangeClient, symbol, description 
 	}
 }
 
+// submitOrder/cancelOrder speak the OrderStream RPC for tests that used the old unary calls. No
+// t.Fatalf here - some callers use these from a goroutine other than the test's own.
+func submitOrder(t testing.TB, client pb.ExchangeClient, req *pb.SubmitOrderRequest) (*pb.SubmitOrderResponse, error) {
+	t.Helper()
+	evt, err := sendOrderCommand(client, &pb.OrderCommand{Command: &pb.OrderCommand_Submit{Submit: req}})
+	if err != nil {
+		return nil, err
+	}
+	switch e := evt.Event.(type) {
+	case *pb.OrderEvent_SubmitResult:
+		return e.SubmitResult, nil
+	case *pb.OrderEvent_Error:
+		return nil, status.Error(codes.Code(e.Error.Code), e.Error.Message)
+	default:
+		return nil, fmt.Errorf("unexpected OrderEvent type %T", evt.Event)
+	}
+}
+
+func cancelOrder(t testing.TB, client pb.ExchangeClient, req *pb.CancelOrderRequest) (*pb.CancelOrderResponse, error) {
+	t.Helper()
+	evt, err := sendOrderCommand(client, &pb.OrderCommand{Command: &pb.OrderCommand_Cancel{Cancel: req}})
+	if err != nil {
+		return nil, err
+	}
+	switch e := evt.Event.(type) {
+	case *pb.OrderEvent_CancelResult:
+		return e.CancelResult, nil
+	case *pb.OrderEvent_Error:
+		return nil, status.Error(codes.Code(e.Error.Code), e.Error.Message)
+	default:
+		return nil, fmt.Errorf("unexpected OrderEvent type %T", evt.Event)
+	}
+}
+
+// sendOrderCommand opens a fresh OrderStream, sends one command, and returns its matching reply.
+func sendOrderCommand(client pb.ExchangeClient, cmd *pb.OrderCommand) (*pb.OrderEvent, error) {
+	stream, err := client.OrderStream(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	cmd.CorrelationId = 1
+	if err := stream.Send(cmd); err != nil {
+		return nil, err
+	}
+	return stream.Recv()
+}
+
 func TestServer_RegisterMarketIsIdempotent(t *testing.T) {
 	client := newTestClient(t)
 	ctx := context.Background()
@@ -104,7 +152,7 @@ func TestServer_RegisterMarketNormalizesSymbolCase(t *testing.T) {
 		t.Fatalf("Symbol = %q, want upper-cased %q", resp.Market.Symbol, "AAPL")
 	}
 
-	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	if _, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
 	}); err != nil {
 		t.Fatalf("SubmitOrder(\"AAPL\") returned error: %v, want the lower-cased registration to be reachable in upper case", err)
@@ -113,10 +161,9 @@ func TestServer_RegisterMarketNormalizesSymbolCase(t *testing.T) {
 
 func TestServer_SubmitOrderMatches(t *testing.T) {
 	client := newTestClient(t)
-	ctx := context.Background()
 	registerMarket(t, client, "AAPL", "Apple Inc.")
 
-	sellResp, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	sellResp, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_SELL, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 50,
 	})
 	if err != nil {
@@ -126,7 +173,7 @@ func TestServer_SubmitOrderMatches(t *testing.T) {
 		t.Fatalf("resting sell produced trades: %+v", sellResp.Trades)
 	}
 
-	buyResp, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	buyResp, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 20,
 	})
 	if err != nil {
@@ -140,28 +187,11 @@ func TestServer_SubmitOrderMatches(t *testing.T) {
 	}
 }
 
-func TestServer_SubmitOrderRejectsCancelledContext(t *testing.T) {
-	exchange := engine.NewExchange()
-	defer exchange.Close()
-	srv := NewServer(exchange)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := srv.SubmitOrder(ctx, &pb.SubmitOrderRequest{
-		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
-	})
-
-	if status.Code(err) != codes.Canceled {
-		t.Fatalf("status code = %v, want Canceled (err: %v)", status.Code(err), err)
-	}
-}
-
 func TestServer_SubmitOrderRejectsInvalidQuantity(t *testing.T) {
 	client := newTestClient(t)
 	registerMarket(t, client, "AAPL", "Apple Inc.")
 
-	_, err := client.SubmitOrder(context.Background(), &pb.SubmitOrderRequest{
+	_, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 0,
 	})
 	if status.Code(err) != codes.InvalidArgument {
@@ -172,7 +202,7 @@ func TestServer_SubmitOrderRejectsInvalidQuantity(t *testing.T) {
 func TestServer_SubmitOrderFailsForUnregisteredSymbol(t *testing.T) {
 	client := newTestClient(t)
 
-	_, err := client.SubmitOrder(context.Background(), &pb.SubmitOrderRequest{
+	_, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
 	})
 	if status.Code(err) != codes.NotFound {
@@ -182,17 +212,16 @@ func TestServer_SubmitOrderFailsForUnregisteredSymbol(t *testing.T) {
 
 func TestServer_CancelOrder(t *testing.T) {
 	client := newTestClient(t)
-	ctx := context.Background()
 	registerMarket(t, client, "AAPL", "Apple Inc.")
 
-	submitResp, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	submitResp, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_SELL, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 50,
 	})
 	if err != nil {
 		t.Fatalf("SubmitOrder returned error: %v", err)
 	}
 
-	cancelResp, err := client.CancelOrder(ctx, &pb.CancelOrderRequest{
+	cancelResp, err := cancelOrder(t, client, &pb.CancelOrderRequest{
 		Symbol: "AAPL", OrderId: submitResp.Order.Id,
 	})
 	if err != nil {
@@ -207,7 +236,7 @@ func TestServer_CancelOrderNotFound(t *testing.T) {
 	client := newTestClient(t)
 	registerMarket(t, client, "AAPL", "Apple Inc.")
 
-	_, err := client.CancelOrder(context.Background(), &pb.CancelOrderRequest{
+	_, err := cancelOrder(t, client, &pb.CancelOrderRequest{
 		Symbol: "AAPL", OrderId: 999,
 	})
 	if status.Code(err) != codes.NotFound {
@@ -218,7 +247,7 @@ func TestServer_CancelOrderNotFound(t *testing.T) {
 func TestServer_CancelOrderFailsForUnregisteredSymbol(t *testing.T) {
 	client := newTestClient(t)
 
-	_, err := client.CancelOrder(context.Background(), &pb.CancelOrderRequest{
+	_, err := cancelOrder(t, client, &pb.CancelOrderRequest{
 		Symbol: "AAPL", OrderId: 999,
 	})
 	if status.Code(err) != codes.NotFound {
@@ -231,12 +260,12 @@ func TestServer_GetOrderBook(t *testing.T) {
 	ctx := context.Background()
 	registerMarket(t, client, "AAPL", "Apple Inc.")
 
-	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	if _, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
 	}); err != nil {
 		t.Fatalf("SubmitOrder returned error: %v", err)
 	}
-	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	if _, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_SELL, Type: pb.OrderType_LIMIT, Price: 105, Quantity: 5,
 	}); err != nil {
 		t.Fatalf("SubmitOrder returned error: %v", err)
@@ -293,12 +322,12 @@ func TestServer_ListSymbolsReflectsTradingActivity(t *testing.T) {
 	ctx := context.Background()
 	registerMarket(t, client, "AAPL", "Apple Inc.")
 
-	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	if _, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_SELL, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
 	}); err != nil {
 		t.Fatalf("SubmitOrder returned error: %v", err)
 	}
-	if _, err := client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+	if _, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
 	}); err != nil {
 		t.Fatalf("SubmitOrder returned error: %v", err)
@@ -341,12 +370,12 @@ func TestServer_SubscribeTradesReceivesLiveTrades(t *testing.T) {
 		t.Fatalf("stream.Header() returned error: %v", err)
 	}
 
-	if _, err := client.SubmitOrder(context.Background(), &pb.SubmitOrderRequest{
+	if _, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_SELL, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
 	}); err != nil {
 		t.Fatalf("SubmitOrder (sell) returned error: %v", err)
 	}
-	if _, err := client.SubmitOrder(context.Background(), &pb.SubmitOrderRequest{
+	if _, err := submitOrder(t, client, &pb.SubmitOrderRequest{
 		Symbol: "AAPL", Side: pb.Side_BUY, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 10,
 	}); err != nil {
 		t.Fatalf("SubmitOrder (buy) returned error: %v", err)
@@ -394,7 +423,7 @@ func TestServer_ListSymbolsIsRaceFreeUnderConcurrentTrading(t *testing.T) {
 			if i%2 == 1 {
 				side = pb.Side_SELL
 			}
-			_, _ = client.SubmitOrder(ctx, &pb.SubmitOrderRequest{
+			_, _ = submitOrder(t, client, &pb.SubmitOrderRequest{
 				Symbol: "AAPL", Side: side, Type: pb.OrderType_LIMIT, Price: 100, Quantity: 1,
 			})
 		}

@@ -19,8 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Exchange_SubmitOrder_FullMethodName     = "/janus.Exchange/SubmitOrder"
-	Exchange_CancelOrder_FullMethodName     = "/janus.Exchange/CancelOrder"
+	Exchange_OrderStream_FullMethodName     = "/janus.Exchange/OrderStream"
 	Exchange_GetOrderBook_FullMethodName    = "/janus.Exchange/GetOrderBook"
 	Exchange_SubscribeTrades_FullMethodName = "/janus.Exchange/SubscribeTrades"
 	Exchange_Ping_FullMethodName            = "/janus.Exchange/Ping"
@@ -33,8 +32,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ExchangeClient interface {
-	SubmitOrder(ctx context.Context, in *SubmitOrderRequest, opts ...grpc.CallOption) (*SubmitOrderResponse, error)
-	CancelOrder(ctx context.Context, in *CancelOrderRequest, opts ...grpc.CallOption) (*CancelOrderResponse, error)
+	OrderStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[OrderCommand, OrderEvent], error)
 	GetOrderBook(ctx context.Context, in *GetOrderBookRequest, opts ...grpc.CallOption) (*GetOrderBookResponse, error)
 	SubscribeTrades(ctx context.Context, in *SubscribeTradesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Trade], error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
@@ -51,25 +49,18 @@ func NewExchangeClient(cc grpc.ClientConnInterface) ExchangeClient {
 	return &exchangeClient{cc}
 }
 
-func (c *exchangeClient) SubmitOrder(ctx context.Context, in *SubmitOrderRequest, opts ...grpc.CallOption) (*SubmitOrderResponse, error) {
+func (c *exchangeClient) OrderStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[OrderCommand, OrderEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SubmitOrderResponse)
-	err := c.cc.Invoke(ctx, Exchange_SubmitOrder_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Exchange_ServiceDesc.Streams[0], Exchange_OrderStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[OrderCommand, OrderEvent]{ClientStream: stream}
+	return x, nil
 }
 
-func (c *exchangeClient) CancelOrder(ctx context.Context, in *CancelOrderRequest, opts ...grpc.CallOption) (*CancelOrderResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CancelOrderResponse)
-	err := c.cc.Invoke(ctx, Exchange_CancelOrder_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Exchange_OrderStreamClient = grpc.BidiStreamingClient[OrderCommand, OrderEvent]
 
 func (c *exchangeClient) GetOrderBook(ctx context.Context, in *GetOrderBookRequest, opts ...grpc.CallOption) (*GetOrderBookResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -83,7 +74,7 @@ func (c *exchangeClient) GetOrderBook(ctx context.Context, in *GetOrderBookReque
 
 func (c *exchangeClient) SubscribeTrades(ctx context.Context, in *SubscribeTradesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Trade], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Exchange_ServiceDesc.Streams[0], Exchange_SubscribeTrades_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Exchange_ServiceDesc.Streams[1], Exchange_SubscribeTrades_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -144,8 +135,7 @@ func (c *exchangeClient) RegisterMarket(ctx context.Context, in *RegisterMarketR
 // All implementations must embed UnimplementedExchangeServer
 // for forward compatibility.
 type ExchangeServer interface {
-	SubmitOrder(context.Context, *SubmitOrderRequest) (*SubmitOrderResponse, error)
-	CancelOrder(context.Context, *CancelOrderRequest) (*CancelOrderResponse, error)
+	OrderStream(grpc.BidiStreamingServer[OrderCommand, OrderEvent]) error
 	GetOrderBook(context.Context, *GetOrderBookRequest) (*GetOrderBookResponse, error)
 	SubscribeTrades(*SubscribeTradesRequest, grpc.ServerStreamingServer[Trade]) error
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
@@ -162,11 +152,8 @@ type ExchangeServer interface {
 // pointer dereference when methods are called.
 type UnimplementedExchangeServer struct{}
 
-func (UnimplementedExchangeServer) SubmitOrder(context.Context, *SubmitOrderRequest) (*SubmitOrderResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method SubmitOrder not implemented")
-}
-func (UnimplementedExchangeServer) CancelOrder(context.Context, *CancelOrderRequest) (*CancelOrderResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method CancelOrder not implemented")
+func (UnimplementedExchangeServer) OrderStream(grpc.BidiStreamingServer[OrderCommand, OrderEvent]) error {
+	return status.Error(codes.Unimplemented, "method OrderStream not implemented")
 }
 func (UnimplementedExchangeServer) GetOrderBook(context.Context, *GetOrderBookRequest) (*GetOrderBookResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetOrderBook not implemented")
@@ -207,41 +194,12 @@ func RegisterExchangeServer(s grpc.ServiceRegistrar, srv ExchangeServer) {
 	s.RegisterService(&Exchange_ServiceDesc, srv)
 }
 
-func _Exchange_SubmitOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SubmitOrderRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ExchangeServer).SubmitOrder(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Exchange_SubmitOrder_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ExchangeServer).SubmitOrder(ctx, req.(*SubmitOrderRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+func _Exchange_OrderStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ExchangeServer).OrderStream(&grpc.GenericServerStream[OrderCommand, OrderEvent]{ServerStream: stream})
 }
 
-func _Exchange_CancelOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CancelOrderRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ExchangeServer).CancelOrder(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Exchange_CancelOrder_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ExchangeServer).CancelOrder(ctx, req.(*CancelOrderRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Exchange_OrderStreamServer = grpc.BidiStreamingServer[OrderCommand, OrderEvent]
 
 func _Exchange_GetOrderBook_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetOrderBookRequest)
@@ -352,14 +310,6 @@ var Exchange_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*ExchangeServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "SubmitOrder",
-			Handler:    _Exchange_SubmitOrder_Handler,
-		},
-		{
-			MethodName: "CancelOrder",
-			Handler:    _Exchange_CancelOrder_Handler,
-		},
-		{
 			MethodName: "GetOrderBook",
 			Handler:    _Exchange_GetOrderBook_Handler,
 		},
@@ -381,6 +331,12 @@ var Exchange_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "OrderStream",
+			Handler:       _Exchange_OrderStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
 		{
 			StreamName:    "SubscribeTrades",
 			Handler:       _Exchange_SubscribeTrades_Handler,
