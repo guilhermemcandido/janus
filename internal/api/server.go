@@ -136,9 +136,8 @@ func (s *Server) GetTradeHistory(ctx context.Context, req *pb.GetTradeHistoryReq
 	return &pb.GetTradeHistoryResponse{Symbol: req.Symbol, Trades: tradesToProto(req.Symbol, trades)}, nil
 }
 
-// RegisterMarket lists symbol on the exchange, so it can be traded, watched, and shown as a market.
-// The symbol is upper-cased so a market's identity is never sensitive to how it was typed -
-// otherwise a market's own card could link to a symbol nothing was ever registered under.
+// RegisterMarket lists symbol on the exchange. Upper-cased so identity never depends on how it was
+// typed - otherwise a market's own card could link to a symbol nothing was registered under.
 func (s *Server) RegisterMarket(ctx context.Context, req *pb.RegisterMarketRequest) (*pb.RegisterMarketResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()

@@ -34,10 +34,8 @@ func NewQuoter(c *client.Client, cfg Config, source PriceSource) *Quoter {
 	return &Quoter{c: c, cfg: cfg, source: source}
 }
 
-// Act implements Strategy: cancels old quotes before submitting new ones, since the reverse
-// order risks a self-trade if the reference price moved by more than the spread. A side is only
-// resubmitted if its old quote was actually cancelled (or already gone) - otherwise its state is
-// unknown and resubmitting would risk stacking a duplicate quote on top of it.
+// Act implements Strategy: cancels old quotes before submitting new ones, since the reverse order
+// risks a self-trade. Resubmits a side only if its old quote was confirmed cancelled or gone.
 func (q *Quoter) Act(ctx context.Context, out io.Writer) error {
 	q.lastFailed = false
 
@@ -107,9 +105,8 @@ func (q *Quoter) Reset(ctx context.Context, out io.Writer) {
 // ActFailed implements bots.FailureReporter.
 func (q *Quoter) ActFailed() bool { return q.lastFailed }
 
-// cancelIfResting cancels the resting order at *id, if any, tolerating ones already filled.
-// Returns whether it's now safe to submit a replacement: false only when a real cancel error
-// left the old order's resting state unknown.
+// cancelIfResting cancels the resting order at *id, tolerating ones already filled. Returns whether
+// it's safe to submit a replacement - false only when a cancel error leaves state unknown.
 func (q *Quoter) cancelIfResting(ctx context.Context, id *uint64, out io.Writer, quiet bool) bool {
 	if *id == 0 {
 		return true

@@ -4,9 +4,8 @@ package engine
 // can't force a huge allocation - the same role a price collar plays on a real exchange.
 const maxTickPrice = 1 << 20 // ~1,048,576 ticks, ~8 MiB of pointers at the high end
 
-// tickArray is a dense array of *PriceLevel indexed directly by price, giving O(1) level lookup and
-// insert in place of a binary search into a sorted slice. It only ever grows toward maxTickPrice,
-// since price is always positive, and never shrinks back down.
+// tickArray is a dense array of *PriceLevel indexed directly by price, giving O(1) lookup and insert
+// in place of a binary search into a sorted slice. Only grows, since price is always positive.
 type tickArray struct {
 	levels []*PriceLevel // levels[price], valid for price in [1, len(levels))
 }

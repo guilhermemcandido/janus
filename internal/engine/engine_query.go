@@ -6,9 +6,8 @@ type bestBidCommand struct {
 	reply chan *types.PriceLevelSnapshot
 }
 
-// BestBid returns an immutable snapshot of the best bid, or nil if the book has none. A snapshot,
-// not the live *PriceLevel, since that object keeps mutating on the engine's own goroutine after
-// this call returns and callers here run on a different goroutine.
+// BestBid returns an immutable snapshot of the best bid, or nil if none. A snapshot, not the live
+// *PriceLevel, since that keeps mutating on the engine's goroutine after this call returns.
 func (e *Engine) BestBid() *types.PriceLevelSnapshot {
 	reply := make(chan *types.PriceLevelSnapshot, 1)
 	r, err := call(e, bestBidCommand{reply: reply}, reply)
