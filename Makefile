@@ -1,5 +1,6 @@
 .PHONY: help build test test-race vet fmt fmt-check check proto tools clean-build clean-data clean-all \
-	run-server run-cli run-watch run-web run-spot run-futures run-hedger run-noise run-arbitrage simulate
+	run-server run-cli run-watch run-web run-spot run-futures run-hedger run-noise run-arbitrage simulate \
+	docker-build docker-up docker-down
 
 BIN_DIR := bin
 DATA_DIR := data
@@ -107,3 +108,17 @@ run-arbitrage: ## Run the arbitrage bot, e.g. ARGS="-spot AAPL -futures AAPLF"
 
 simulate: build ## Run server + web UI + a full bot fleet across 12 markets; opens http://localhost:8080
 	-@./scripts/simulate.sh
+
+##@ Docker
+
+docker-build: ## Build the image used by docker-compose.yml
+	@docker compose build
+
+docker-up: ## Run server + web UI + bots for AAPL/AAPLF in containers; opens http://localhost:8080
+	@docker compose up --build -d
+	@until curl -sf http://localhost:8080 >/dev/null 2>&1; do sleep 0.5; done
+	-@open http://localhost:8080 2>/dev/null || xdg-open http://localhost:8080 2>/dev/null
+	@trap 'docker compose down' EXIT INT TERM; docker compose logs -f || true
+
+docker-down: ## Stop and remove the docker-compose containers (add ARGS="-v" to also wipe the snapshot volume)
+	@docker compose down $(ARGS)

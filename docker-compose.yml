@@ -1,0 +1,74 @@
+# Trades one pair (AAPL/AAPLF) with every bot type, plus the web UI. For the full
+# 12-market fleet without Docker, use `make simulate` instead.
+services:
+  server:
+    build: .
+    command: ["/app/server", "-addr", ":50051", "-snapshot", "/data/exchange.snapshot.json"]
+    ports:
+      - "50051:50051"
+    volumes:
+      - janus-data:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  register:
+    build: .
+    depends_on:
+      server:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - >-
+        /app/cli -addr server:50051 AAPL register Apple Inc. &&
+        /app/cli -addr server:50051 AAPLF register AAPL futures contract
+
+  web:
+    build: .
+    depends_on:
+      register:
+        condition: service_completed_successfully
+    command: ["/app/web", "-addr", "server:50051", "-listen", ":8080"]
+    ports:
+      - "8080:8080"
+
+  spot:
+    build: .
+    depends_on:
+      register:
+        condition: service_completed_successfully
+    command: ["/app/spot", "-addr", "server:50051", "-initial-price", "100", "AAPL"]
+
+  futures:
+    build: .
+    depends_on:
+      register:
+        condition: service_completed_successfully
+    command: ["/app/futures", "-addr", "server:50051", "-spot", "AAPL", "-fallback-price", "100", "AAPLF"]
+
+  hedger:
+    build: .
+    depends_on:
+      register:
+        condition: service_completed_successfully
+    command: ["/app/hedger", "-addr", "server:50051", "-futures", "AAPLF", "-spot", "AAPL"]
+
+  arbitrage:
+    build: .
+    depends_on:
+      register:
+        condition: service_completed_successfully
+    command: ["/app/arbitrage", "-addr", "server:50051", "-spot", "AAPL", "-futures", "AAPLF"]
+
+  noise:
+    build: .
+    depends_on:
+      register:
+        condition: service_completed_successfully
+    command: ["/app/noise", "-addr", "server:50051", "-symbols", "AAPL,AAPLF"]
+
+volumes:
+  janus-data:

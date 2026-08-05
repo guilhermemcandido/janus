@@ -34,6 +34,8 @@ Details on how each piece works, the concurrency model, and full diagrams live i
 
 Everything else (gRPC, protobuf) is fetched automatically by `go build`. `protoc` and its Go plugins are only needed to regenerate the gRPC code (`make proto`); the generated code is already committed, so this isn't required to build or run Janus.
 
+Don't want to install Go at all? [Docker](https://docs.docker.com/get-docker/) is enough - see below.
+
 ## Quick start
 
 Everything below is a `Makefile` target - run `make help` for the full list.
@@ -66,6 +68,8 @@ make run-web   ARGS="-addr localhost:50051"  # web UI at :8080
 ```
 
 `make check` runs formatting, `go vet`, and the full test suite (with `-race`).
+
+No Go toolchain? `make docker-up` builds and runs the exchange, web UI, and one bot of each kind (trading AAPL/AAPLF) in containers, and opens the web UI the same way `make simulate` does. `make docker-down` stops it (add `ARGS="-v"` to also wipe the persisted snapshot volume). This is a lighter demo than `make simulate` - one instrument, not twelve.
 
 ## Components
 
@@ -107,6 +111,7 @@ pkg/client/     the public Go client library
 proto/          janus.proto - the gRPC service definition, source of truth
 scripts/        simulate.sh - one-command demo: server + web UI + a full bot fleet across 12 markets
 docs/           ARCHITECTURE.md and the screenshots/GIF used above
+Dockerfile, docker-compose.yml   containerized demo: server + web UI + one bot of each kind, trading AAPL/AAPLF
 ```
 
 ## License
